@@ -1,4 +1,5 @@
 // Tiny UI toolkit: sheets (full-screen panels), dialogs and toasts.
+import { icon } from './icons.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -29,7 +30,7 @@ export function openSheet({ title, body, footer = '', onClose, className = '' })
   el.className = `sheet ${className}`;
   el.innerHTML = `
     <header class="sheet-head">
-      <button class="icon-btn" data-close aria-label="Close">←</button>
+      <button class="icon-btn" data-close aria-label="Back">${icon('arrow-left')}</button>
       <h2>${title}</h2>
     </header>
     <div class="sheet-body">${body}</div>
@@ -55,14 +56,17 @@ export function closeSheet(el) {
 export const hasOpenSheet = () => stack.length > 0 || !!$('.dialog-backdrop');
 
 // ---- dialogs ----
-function dialog(inner, setup) {
+function dialog(inner, setup, cls = '') {
   return new Promise((resolve) => {
     const bd = document.createElement('div');
-    bd.className = 'dialog-backdrop';
+    bd.className = `dialog-backdrop ${cls}`;
     bd.innerHTML = `<div class="dialog" role="dialog">${inner}</div>`;
     document.body.appendChild(bd);
     const done = (v) => { bd.remove(); resolve(v); };
     bd._cancel = () => done(null);
+    // tap outside an action sheet closes it
+    if (cls.includes('action-sheet')) bd.addEventListener('click', (e) => { if (e.target === bd) done(null); });
+    requestAnimationFrame(() => bd.classList.add('open'));
     setup(bd, done);
   });
 }
@@ -104,17 +108,23 @@ export function promptDialog(msg, value = '', placeholder = '') {
   );
 }
 
-// options: [{ value, label, desc }]
+// Action sheet sliding up from the bottom.
+// options: [{ value, label, desc, icon, tone: 'danger'|'active' }]
 export function choiceDialog(title, options) {
   return dialog(
-    `<h3>${title}</h3><div class="choice-list">${options
-      .map((o, i) => `<button class="choice" data-i="${i}"><b>${o.label}</b>${o.desc ? `<small>${o.desc}</small>` : ''}</button>`)
+    `<div class="grabber"></div><h3>${title}</h3><div class="choice-list">${options
+      .map((o, i) => `<button class="choice ${o.tone || ''}" data-i="${i}">
+          ${o.icon ? `<span class="choice-ico">${icon(o.icon)}</span>` : ''}
+          <span class="choice-text"><b>${o.label}</b>${o.desc ? `<small>${o.desc}</small>` : ''}</span>
+          ${o.tone === 'active' ? icon('check', 'choice-end') : icon('chevron-right', 'choice-end')}
+        </button>`)
       .join('')}</div>
-     <div class="dialog-actions"><button class="btn" data-cancel>Cancel</button></div>`,
+     <button class="btn ghost block" data-cancel>Cancel</button>`,
     (bd, done) => {
       bd.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => done(options[b.dataset.i].value)));
       bd.querySelector('[data-cancel]').addEventListener('click', () => done(null));
-    }
+    },
+    'action-sheet'
   );
 }
 

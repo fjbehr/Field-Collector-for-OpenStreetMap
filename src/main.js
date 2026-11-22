@@ -10,7 +10,8 @@ import * as db from './db.js';
 import * as gps from './gps.js';
 import { distance, lineLength, ringArea, simplify, fmtDistance, fmtArea } from './geo.js';
 import { CachedTileLayer, PmtilesLayer, openPmtiles, setCacheLimit } from './tiles.js';
-import { featureLabel, isAreaTags } from './presets.js';
+import { featureLabel, isAreaTags, matchPreset } from './presets.js';
+import { icon, categoryIcon, renderIcons } from './icons.js';
 import { openEditor } from './editor.js';
 import * as osm from './osm.js';
 import { FORMATS, buildFiles, safeName, sendEmail, shareFiles, saveToDocuments } from './export.js';
@@ -20,6 +21,7 @@ import {
 } from './ui.js';
 
 const native = Capacitor.isNativePlatform();
+renderIcons();
 
 const state = {
   settings: { ...DEFAULT_SETTINGS },
@@ -77,6 +79,7 @@ const STYLE = {
   uploaded: { color: '#2b8a3e', fill: '#51cf66' },
   untagged: { color: '#c92a2a', fill: '#ff6b6b' },
 };
+const statusOf = (f) => (f.status === 'uploaded' ? 'uploaded' : Object.keys(f.tags || {}).length ? 'new' : 'untagged');
 function styleOf(f) {
   if (f.status === 'uploaded') return STYLE.uploaded;
   return Object.keys(f.tags || {}).length ? STYLE.new : STYLE.untagged;
@@ -89,14 +92,21 @@ function renderFeatures() {
     const st = styleOf(f);
     let layer;
     if (f.type === 'node') {
-      layer = L.circleMarker([f.lat, f.lon], { radius: 8, color: '#fff', weight: 2, fillColor: st.fill, fillOpacity: 1 });
+      const cat = matchPreset(f.tags || {})?.category;
+      layer = L.marker([f.lat, f.lon], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="fmark ${statusOf(f)}">${categoryIcon(cat)}</div>`,
+          iconSize: [30, 30], iconAnchor: [15, 15], tooltipAnchor: [0, -14],
+        }),
+      });
     } else {
       const ll = f.nodes.map((p) => [p.lat, p.lon]);
       layer = f.closed
         ? L.polygon(ll, { color: st.color, weight: 3, fillColor: st.fill, fillOpacity: 0.25 })
         : L.polyline(ll, { color: st.color, weight: 4 });
     }
-    layer.bindTooltip(esc(featureLabel(f)), { direction: 'top', offset: [0, -6] });
+    layer.bindTooltip(esc(featureLabel(f)), { direction: 'top', offset: f.type === 'node' ? [0, 0] : [0, -6] });
     layer.on('click', () => editFeature(f.id));
     layer.addTo(featureLayer);
   }
@@ -145,16 +155,16 @@ gps.onFix((fix) => {
   } else if (state.follow) {
     map.panTo([fix.lat, fix.lon], { animate: true });
   }
-  const badge = $('#gps-badge');
   const acc = fix.accuracy ?? 999;
-  badge.textContent = `GPS ±${acc < 100 ? acc.toFixed(0) : '>99'} m${fix.simulated ? ' (sim)' : ''}`;
-  badge.className = acc <= 5 ? 'good' : acc <= state.settings.maxAccuracy ? 'ok' : 'bad';
+  setGpsBadge(`±${acc < 100 ? acc.toFixed(0) : '>99'} m${fix.simulated ? ' sim' : ''}`, acc <= 5 ? 'good' : acc <= state.settings.maxAccuracy ? 'ok' : 'bad');
   onRecordingFix(fix);
 });
+function setGpsBadge(text, cls) {
+  $('#gps-badge .t').textContent = text;
+  $('#gps-badge').className = `chip ${cls}`;
+}
 gps.onError((err) => {
-  const badge = $('#gps-badge');
-  badge.textContent = err.code === 'NOT_AUTHORIZED' ? 'GPS: no permission' : 'GPS: no signal';
-  badge.className = 'bad';
+  setGpsBadge(err.code === 'NOT_AUTHORIZED' ? 'No permission' : 'No signal', 'bad');
   if (err.code === 'NOT_AUTHORIZED' && native) {
     confirmDialog('This app needs location permission to record points and ways. Open settings now?', 'Open settings').then(
       (ok) => ok && gps.openSettings()
@@ -164,8 +174,7 @@ gps.onError((err) => {
 setInterval(() => {
   const fix = gps.lastFix();
   if (fix && Date.now() - fix.time > 15000) {
-    $('#gps-badge').textContent = 'GPS: waiting…';
-    $('#gps-badge').className = 'bad';
+    setGpsBadge('Waiting…', 'bad');
   }
 }, 5000);
 
@@ -211,8 +220,8 @@ function editFeature(id, isNew = false) {
 
 async function moveNode(f) {
   const how = await choiceDialog('Move point to…', [
-    { value: 'gps', label: 'Current GPS position', desc: `averaged over ${state.settings.averageSeconds} s` },
-    { value: 'center', label: 'Map crosshair', desc: 'close the editor first to position the map' },
+    { value: 'gps', icon: 'gps', label: 'Current GPS position', desc: `averaged over ${state.settings.averageSeconds} s` },
+    { value: 'center', icon: 'crosshair', label: 'Map crosshair', desc: 'close the editor first to position the map' },
   ]);
   if (how === 'gps') {
     const pos = await captureAveraged();
@@ -264,8 +273,8 @@ async function captureAveraged() {
 // ---------- add point ----------
 async function addPoint() {
   const how = await choiceDialog('Add point', [
-    { value: 'gps', label: '📡 At my GPS position', desc: `stand at the feature, averaged over ${state.settings.averageSeconds} s` },
-    { value: 'center', label: '✛ At the map crosshair', desc: 'for features you cannot stand at (fenced, across a river…)' },
+    { value: 'gps', icon: 'gps', label: 'At my GPS position', desc: `stand at the feature, averaged over ${state.settings.averageSeconds} s` },
+    { value: 'center', icon: 'crosshair', label: 'At the map crosshair', desc: 'for features you cannot stand at (fenced, across a river…)' },
   ]);
   if (!how) return;
   let props;
@@ -287,9 +296,9 @@ async function addPoint() {
 async function startWay() {
   if (state.recording) return;
   const mode = await choiceDialog('Record way (line or area)', [
-    { value: 'auto', label: '🚶 Walk it – automatic GPS track', desc: `adds a point every ${state.settings.minDistance} m; works with the screen off` },
-    { value: 'vertex', label: '📍 Corner by corner – GPS', desc: 'stand at each corner/bend and tap “Add point” (best for buildings & fields)' },
-    { value: 'crosshair', label: '✛ Draw on the map', desc: 'move the map and tap “Add point” at the crosshair' },
+    { value: 'auto', icon: 'walk', label: 'Walk it – automatic GPS track', desc: `adds a point every ${state.settings.minDistance} m; works with the screen off` },
+    { value: 'vertex', icon: 'point', label: 'Corner by corner – GPS', desc: 'stand at each corner/bend and tap “Add point” (best for buildings & fields)' },
+    { value: 'crosshair', icon: 'pen', label: 'Draw on the map', desc: 'move the map and tap “Add point” at the crosshair' },
   ]);
   if (!mode) return;
   state.recording = { mode, nodes: [], track: [], paused: false, startedAt: Date.now() };
@@ -327,19 +336,21 @@ function showRecordPanel() {
   const p = $('#record-panel');
   p.hidden = false;
   p.innerHTML = `
-    <div class="rec-info"><span class="rec-dot"></span><span data-info></span></div>
+    <div class="rec-info"><span class="rec-dot"></span><span class="rec-mode">${{ auto: 'Walking', vertex: 'Corners', crosshair: 'Drawing' }[r.mode]}</span><span data-info></span></div>
     <div class="rec-buttons">
-      ${r.mode === 'auto' ? '<button class="btn" data-pause>Pause</button>' : '<button class="btn primary" data-add>+ Add point</button>'}
-      <button class="btn" data-undo>Undo</button>
-      <button class="btn" data-more>⋯</button>
+      ${r.mode === 'auto' ? pauseButton(r.paused) : `<button class="btn primary" data-add>${icon('plus')}Add point</button>`}
+      <button class="btn" data-undo aria-label="Undo last point">${icon('undo')}Undo</button>
+      <button class="btn icon-only" data-more aria-label="More">${icon('ellipsis')}</button>
     </div>
     <div class="rec-buttons">
-      <button class="btn primary" data-finish-line>Finish line</button>
-      <button class="btn primary" data-finish-area>Finish area</button>
+      <button class="btn success" data-finish-line>${icon('line')}Finish line</button>
+      <button class="btn success" data-finish-area>${icon('area')}Finish area</button>
     </div>`;
   document.body.classList.toggle('crosshair-on', true);
   updateRecordPanel();
 }
+
+const pauseButton = (paused) => `<button class="btn" data-pause>${paused ? `${icon('play')}Resume` : `${icon('pause')}Pause`}</button>`;
 
 function updateRecordPanel() {
   const r = state.recording;
@@ -355,7 +366,7 @@ function updateRecordPanel() {
   if (!info) return;
   const len = lineLength(r.nodes);
   const accTxt = r.mode !== 'crosshair' && fix ? ` · GPS ±${fix.accuracy.toFixed(0)} m${fix.accuracy > state.settings.maxAccuracy ? ' (too poor – skipped)' : ''}` : '';
-  info.textContent = `${r.paused ? 'PAUSED · ' : ''}${r.nodes.length} points · ${fmtDistance(len)}${accTxt}`;
+  info.textContent = `${r.paused ? 'paused · ' : ''}${r.nodes.length} points · ${fmtDistance(len)}${accTxt}`;
 }
 
 async function recordAddPoint() {
@@ -419,7 +430,7 @@ $('#record-panel').addEventListener('click', async (e) => {
   if (!b) return;
   if (b.dataset.pause != null) {
     r.paused = !r.paused;
-    b.textContent = r.paused ? 'Resume' : 'Pause';
+    b.outerHTML = pauseButton(r.paused);
     await persistRecording();
     updateRecordPanel();
   } else if (b.dataset.add != null) {
@@ -434,8 +445,8 @@ $('#record-panel').addEventListener('click', async (e) => {
     finishWay(true);
   } else if (b.dataset.more != null) {
     const what = await choiceDialog('Recording', [
-      ...(r.mode !== 'crosshair' ? [{ value: 'center', label: '✛ Add point at crosshair', desc: 'mix in a point you cannot walk to' }] : []),
-      { value: 'cancel', label: '🗑 Discard this recording' },
+      ...(r.mode !== 'crosshair' ? [{ value: 'center', icon: 'crosshair', label: 'Add point at crosshair', desc: 'mix in a point you cannot walk to' }] : []),
+      { value: 'cancel', icon: 'trash', tone: 'danger', label: 'Discard this recording' },
     ]);
     if (what === 'center') {
       const c = map.getCenter();
@@ -460,22 +471,24 @@ function openList() {
   const sheet = openSheet({
     title: 'Collected features',
     body: `<label class="inline-check"><input type="checkbox" data-all> all projects</label><div class="summary"></div><div class="feature-list"></div>`,
-    footer: `<button class="btn" data-clean>Remove uploaded…</button>`,
+    footer: `<button class="btn" data-clean>${icon('trash')}Remove uploaded…</button>`,
   });
   const render = () => {
     const list = projectFeatures(all);
     const n = (fn) => list.filter(fn).length;
-    $('.summary', sheet).innerHTML = `${list.length} features · ${n((f) => f.status !== 'uploaded')} not uploaded · ${n((f) => f.status === 'uploaded')} uploaded`;
+    $('.summary', sheet).innerHTML = `<div class="stat"><b>${list.length}</b><span>features</span></div>
+      <div class="stat new"><b>${n((f) => f.status !== 'uploaded')}</b><span>to upload</span></div>
+      <div class="stat uploaded"><b>${n((f) => f.status === 'uploaded')}</b><span>uploaded</span></div>`;
     $('.feature-list', sheet).innerHTML = list.length
       ? list.map((f) => `
-        <button class="feature-item ${f.status}" data-id="${f.id}">
-          <span class="ficon ${f.type === 'node' ? 'pt' : f.closed ? 'ar' : 'ln'}"></span>
-          <span><b>${esc(featureLabel(f))}</b>
-          <small>${f.type === 'node' ? 'point' : f.closed ? `area · ${fmtArea(ringArea(f.nodes))}` : `line · ${fmtDistance(lineLength(f.nodes))}`}
-            · ${new Date(f.created).toLocaleString()}${all ? ` · ${esc(f.project)}` : ''}
-            ${f.status === 'uploaded' ? ' · ✓ uploaded' : Object.keys(f.tags).length ? '' : ' · ⚠ no tags'}</small></span>
+        <button class="feature-item" data-id="${f.id}">
+          <span class="ficon ${statusOf(f)}">${categoryIcon(matchPreset(f.tags || {})?.category)}</span>
+          <span class="ftext"><b>${esc(featureLabel(f))}</b>
+          <small>${icon(f.type === 'node' ? 'point' : f.closed ? 'area' : 'line', 'sm')}${f.type === 'node' ? 'Point' : f.closed ? `Area · ${fmtArea(ringArea(f.nodes))}` : `Line · ${fmtDistance(lineLength(f.nodes))}`}
+            · ${new Date(f.created).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}${all ? ` · ${esc(f.project)}` : ''}</small></span>
+          <span class="pill ${statusOf(f)}">${{ uploaded: 'Uploaded', new: 'New', untagged: 'No tags' }[statusOf(f)]}</span>
         </button>`).join('')
-      : '<p class="muted">Nothing collected yet. Use “Point” or “Way” on the map.</p>';
+      : `<div class="empty">${icon('map-pinned')}<p><b>Nothing collected yet</b><br>Use <b>Point</b> or <b>Way</b> on the map to start.</p></div>`;
   };
   sheet.addEventListener('click', async (e) => {
     const item = e.target.closest('.feature-item');
@@ -517,15 +530,16 @@ async function openUpload() {
         <textarea data-comment rows="3" placeholder="e.g. Boreholes, school and footpaths in Kpalsi surveyed on foot">${esc(s.changesetComment)}</textarea></label>
       <p class="hint">Hashtags added: ${esc(s.changesetHashtags || '–')} · source=survey</p>
       <p class="hint">Only upload what you have verified on the ground. Do not upload personal data (names of private persons, phone numbers of individuals). Private survey fields are never uploaded.</p>`,
-    footer: `<button class="btn primary" data-upload>Upload</button>`,
+    footer: `<button class="btn primary" data-upload>${icon('upload')}Upload</button>`,
   });
 
   async function renderLogin() {
     const auth = await osm.getAuth(srv.key);
     $('[data-login]', sheet).innerHTML = auth
-      ? `Server: <b>${esc(srv.label)}</b><br>Logged in as <b>${esc(auth.user?.name)}</b> <button class="btn small" data-logout>Log out</button>`
-      : `Server: <b>${esc(srv.label)}</b><br>Not logged in. <button class="btn small primary" data-loginbtn>Log in</button>
-         <br><small class="muted">You need a free account on ${esc(srv.web.replace('https://', ''))}.</small>`;
+      ? `<div class="login-row"><span class="avatar">${icon('check-circle')}</span><span class="grow">Logged in as <b>${esc(auth.user?.name)}</b><br><small class="muted">${esc(srv.label)}</small></span>
+           <button class="btn small" data-logout>${icon('logout')}Log out</button></div>`
+      : `<div class="login-row"><span class="avatar off">${icon('login')}</span><span class="grow">Not logged in<br><small class="muted">${esc(srv.label)} – free account on ${esc(srv.web.replace('https://', ''))}</small></span>
+           <button class="btn small primary" data-loginbtn>${icon('login')}Log in</button></div>`;
   }
   function pending() {
     return projectFeatures(all).filter((f) => f.status !== 'uploaded');
@@ -534,7 +548,7 @@ async function openUpload() {
     const list = pending();
     const problems = osm.validate(list);
     const nodes = list.filter((f) => f.type === 'node').length;
-    $('[data-summary]', sheet).innerHTML = `<b>${list.length}</b> features to upload (${nodes} points, ${list.length - nodes} ways)` +
+    $('[data-summary]', sheet).innerHTML = `${icon('upload', 'lead')}<b>${list.length}</b> features to upload (${nodes} points, ${list.length - nodes} ways)` +
       (problems.length ? `<div class="warn"><b>${problems.length} problem(s) – these features will be skipped:</b><br>${problems.slice(0, 8).map(esc).join('<br>')}</div>` : '');
   }
   await renderLogin();
@@ -598,7 +612,7 @@ function openExport() {
         `<label class="inline-check"><input type="checkbox" value="${k}" ${k === 'geojson' || k === 'gpx' ? 'checked' : ''}> ${esc(f.label)}</label>`).join('')}</fieldset>
       <label class="field"><span>Send to e-mail address</span><input type="email" data-email value="${esc(s.email)}" placeholder="you@example.com"></label>
       <p class="hint">Without network the e-mail waits in your mail app’s outbox. GeoJSON opens directly in QGIS (Layer → Add Vector Layer).</p>`,
-    footer: `<button class="btn" data-save>Save on phone</button><button class="btn" data-share>Share…</button><button class="btn primary" data-mail>E-mail</button>`,
+    footer: `<button class="btn" data-save>${icon('save-phone')}Save</button><button class="btn" data-share>${icon('share')}Share</button><button class="btn primary" data-mail>${icon('mail')}E-mail</button>`,
   });
   const scope = () => projectFeatures($('[data-all]', sheet).checked);
   const updateCount = () => { $('[data-count]', sheet).textContent = `${scope().length} features`; };
@@ -655,7 +669,7 @@ async function loadExisting() {
 // ======================================================================
 async function saveSettings() {
   await db.kvSet('settings', state.settings);
-  $('#project-name').textContent = state.settings.project;
+  $('#project-name .name').textContent = state.settings.project;
   setCacheLimit(state.settings.tileCacheMax);
 }
 
@@ -789,12 +803,12 @@ async function openSettings() {
 // ======================================================================
 async function openMore() {
   const v = await choiceDialog('Menu', [
-    { value: 'export', label: '✉ Export & send by e-mail', desc: 'GeoJSON for QGIS, GPX, OSM, backup' },
-    { value: 'existing', label: '⬇ Load existing OSM data here', desc: 'see what is already mapped (needs network, kept offline)' },
-    ...(state.existing ? [{ value: 'toggle', label: state.showExisting ? '◌ Hide existing OSM data' : '◉ Show existing OSM data' }] : []),
-    { value: 'project', label: '📁 Switch project', desc: `current: ${esc(state.settings.project)}` },
-    { value: 'settings', label: '⚙ Settings' },
-    { value: 'help', label: '? Help' },
+    { value: 'export', icon: 'mail', label: 'Export & send by e-mail', desc: 'GeoJSON for QGIS, GPX, OSM, backup' },
+    { value: 'existing', icon: 'download', label: 'Load existing OSM data here', desc: 'see what is already mapped (needs network, kept offline)' },
+    ...(state.existing ? [{ value: 'toggle', icon: state.showExisting ? 'eye-off' : 'eye', label: state.showExisting ? 'Hide existing OSM data' : 'Show existing OSM data' }] : []),
+    { value: 'project', icon: 'folder-open', label: 'Switch project', desc: `current: ${esc(state.settings.project)}` },
+    { value: 'settings', icon: 'settings', label: 'Settings' },
+    { value: 'help', icon: 'help', label: 'Help' },
   ]);
   if (v === 'export') openExport();
   else if (v === 'existing') loadExisting();
@@ -807,8 +821,8 @@ async function openMore() {
 async function switchProject() {
   const projects = [...new Set([...state.features.values()].map((f) => f.project).concat(state.settings.project))].sort();
   const v = await choiceDialog('Project', [
-    ...projects.map((p) => ({ value: p, label: p === state.settings.project ? `● ${esc(p)}` : esc(p), desc: `${[...state.features.values()].filter((f) => f.project === p).length} features` })),
-    { value: '__new', label: '+ New project…' },
+    ...projects.map((p) => ({ value: p, icon: 'folder', tone: p === state.settings.project ? 'active' : '', label: esc(p), desc: `${[...state.features.values()].filter((f) => f.project === p).length} features` })),
+    { value: '__new', icon: 'folder-plus', label: 'New project…' },
   ]);
   if (!v) return;
   let name = v;
@@ -893,7 +907,7 @@ window.addEventListener('offline', () => $('#net-badge').hidden = false);
   const stored = await db.kvGet('settings');
   state.settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
   setCacheLimit(state.settings.tileCacheMax);
-  $('#project-name').textContent = state.settings.project;
+  $('#project-name .name').textContent = state.settings.project;
   for (const f of await db.allFeatures()) state.features.set(f.id, f);
   state.existing = (await db.kvGet('existingOsm')) || null;
   await setBasemap();

@@ -130,6 +130,8 @@ src/gps.js            GPS (background-geolocation plugin / browser / simulation)
 src/osm.js            OAuth 2.0 PKCE, osmChange upload, existing data download
 src/export.js         GeoJSON / GPX / OSM / backup, e-mail & share
 src/tiles.js          cached tile layer, offline .pmtiles layer
+src/icons.js          SVG icons (Lucide, bundled for offline use) & category icons
+src/ui.js             sheets, dialogs, bottom-sheet menus, toasts
 src/db.js             IndexedDB storage
 src/config.js         client IDs, servers, base maps, defaults
 android/              Capacitor Android project (manifest: permissions, OAuth redirect)

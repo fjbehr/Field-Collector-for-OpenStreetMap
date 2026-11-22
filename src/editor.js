@@ -10,6 +10,7 @@ import { lineLength, ringArea, fmtArea, fmtDistance } from './geo.js';
 import { cleanTags } from './osm.js';
 import * as db from './db.js';
 import { $, $$, esc, openSheet, closeSheet, confirmDialog, toast } from './ui.js';
+import { icon, categoryIcon } from './icons.js';
 
 const WIKI = 'https://wiki.openstreetmap.org/wiki/';
 
@@ -44,8 +45,8 @@ export function pickPreset(geom) {
     const sheet = openSheet({
       title: `Choose type (${GEOM_LABEL[geom]})`,
       body: `
-        <input type="search" class="search" placeholder="Search: school, borehole, footpath, shea…" autofocus>
-        <label class="inline-check"><input type="checkbox" data-allgeom> show types for all geometries</label>
+        <div class="search-wrap">${icon('search')}<input type="search" class="search" placeholder="Search: school, borehole, footpath, shea…" autofocus></div>
+        <label class="inline-check small"><input type="checkbox" data-allgeom> show types for all geometries</label>
         <div class="preset-list"></div>`,
       onClose: () => resolve(picked),
     });
@@ -62,13 +63,13 @@ export function pickPreset(geom) {
       } else {
         list.innerHTML = CATEGORIES.map((c) => {
           const items = res.filter((p) => p.category === c);
-          return items.length ? `<details><summary>${esc(c)} <small>(${items.length})</small></summary>${items.map(item).join('')}</details>` : '';
+          return items.length ? `<details class="cat"><summary><span class="cat-ico">${categoryIcon(c)}</span><span class="grow">${esc(c)}</span><span class="count-badge">${items.length}</span>${icon('chevron-down', 'chev')}</summary>${items.map(item).join('')}</details>` : '';
         }).join('');
       }
-      list.insertAdjacentHTML('beforeend', `<button class="preset-item raw" data-raw>✎ Raw tags only (no preset)</button>`);
+      list.insertAdjacentHTML('beforeend', `<button class="preset-item raw" data-raw>${icon('tags')}<span>Raw tags only (no preset)</span></button>`);
     };
-    const item = (p) => `<button class="preset-item" data-id="${p.id}"><b>${esc(p.name)}</b>
-        <small>${esc(Object.entries(p.tags).map(([k, v]) => `${k}=${v || '…'}`).join(' + '))}</small></button>`;
+    const item = (p) => `<button class="preset-item" data-id="${p.id}"><span class="pi-ico">${categoryIcon(p.category)}</span>
+        <span class="pi-text"><b>${esc(p.name)}</b><small>${esc(Object.entries(p.tags).map(([k, v]) => `${k}=${v || '…'}`).join(' + '))}</small></span></button>`;
     list.addEventListener('click', (e) => {
       const b = e.target.closest('.preset-item');
       if (!b) return;
@@ -100,31 +101,32 @@ export async function openEditor(feature, opts = {}) {
   const sheet = openSheet({
     title: opts.isNew ? 'New feature' : 'Edit feature',
     body: `
-      <div class="preset-row">
-        <div><small class="muted">Type</small><div class="preset-name"></div></div>
-        <button class="btn" data-change>Change</button>
-      </div>
-      ${f.status === 'uploaded' ? `<p class="warn">Already uploaded to OSM (id ${esc(f.osmId)}). Changes here stay on the phone and in exports only – edit the object on openstreetmap.org to change it there.</p>` : ''}
+      <button class="preset-row" data-change>
+        <span class="preset-ico"></span>
+        <span class="grow"><small class="muted">Type</small><span class="preset-name"></span></span>
+        <span class="change-link">Change${icon('chevron-right')}</span>
+      </button>
+      ${f.status === 'uploaded' ? `<p class="warn">${icon('info', 'lead')}Already uploaded to OSM (id ${esc(f.osmId)}). Changes here stay on the phone and in exports only – edit the object on openstreetmap.org to change it there.</p>` : ''}
       <div class="fields"></div>
       <details class="block" open>
         <summary>OSM tags <small class="tag-count"></small></summary>
-        <div class="row-right"><button class="btn small" data-textmode>Text view</button></div>
+        <div class="row-right"><button class="btn small ghost" data-textmode>Text view</button></div>
         <div class="tag-table"></div>
-        <button class="btn small" data-addtag>+ Add tag</button>
-        <p class="hint">All tags from <a href="#" data-mapfeatures>Map Features</a> can be used. Tap ? to read the wiki (online).</p>
+        <button class="btn small" data-addtag>${icon('plus')}Add tag</button>
+        <p class="hint">All tags from <a href="#" data-mapfeatures>Map Features</a> can be used. Tap ${icon('help', 'inline')} to read the wiki (online).</p>
       </details>
       <details class="block" ${Object.keys(f.extra).length ? 'open' : ''}>
         <summary>Private survey fields <small>(QGIS export only, never uploaded)</small></summary>
         <div class="extra-table"></div>
-        <button class="btn small" data-addextra>+ Add field</button>
+        <button class="btn small" data-addextra>${icon('plus')}Add field</button>
       </details>
       <label class="field"><span>Private note (not uploaded)</span><textarea data-note rows="2">${esc(f.note || '')}</textarea></label>
       <div class="info"></div>
       <datalist id="dl-keys">${COMMON_KEYS.map((k) => `<option value="${esc(k)}">`).join('')}</datalist>`,
     footer: `
-      <button class="btn danger" data-delete>Delete</button>
-      ${opts.onMove ? '<button class="btn" data-move>Move…</button>' : ''}
-      <button class="btn primary" data-save>Save</button>`,
+      <button class="btn danger icon-only" data-delete aria-label="Delete">${icon('trash')}</button>
+      ${opts.onMove ? `<button class="btn" data-move>${icon('move')}Move</button>` : ''}
+      <button class="btn primary" data-save>${icon('check')}Save</button>`,
     onClose: () => { if (!saved && opts.isNew) opts.onCancelNew?.(f); },
   });
 
@@ -137,6 +139,7 @@ export async function openEditor(feature, opts = {}) {
   // ---- rendering ----
   function renderPreset() {
     $('.preset-name', sheet).textContent = preset ? preset.name : Object.keys(cleanTags(f.tags)).length ? 'Custom tags' : 'Not set – choose a type';
+    $('.preset-ico', sheet).innerHTML = preset ? categoryIcon(preset.category) : icon('tags');
   }
 
   function fieldInput(fd) {
@@ -154,7 +157,7 @@ export async function openEditor(feature, opts = {}) {
       const type = fd.type === 'number' ? 'text" inputmode="decimal' : fd.type;
       input = `<input ${attrs} type="${type}" value="${esc(v)}" placeholder="${esc(fd.placeholder || '')}">`;
     }
-    return `<label class="field"><span>${esc(fd.label)} <button class="wiki" data-wiki="${esc(fd.key)}" type="button">?</button></span>${input}</label>`;
+    return `<label class="field"><span>${esc(fd.label)} <button class="wiki" data-wiki="${esc(fd.key)}" type="button" aria-label="Wiki">${icon('help')}</button></span>${input}</label>`;
   }
 
   function renderFields() {
@@ -176,8 +179,8 @@ export async function openEditor(feature, opts = {}) {
           <input class="k" list="dl-keys" value="${esc(k)}" placeholder="key" autocapitalize="off" autocomplete="off">
           <input class="v" list="dl-v-${i}" value="${esc(v)}" placeholder="value" autocapitalize="off" autocomplete="off">
           <datalist id="dl-v-${i}">${knownValues(k).map((o) => `<option value="${esc(o)}">`).join('')}</datalist>
-          <button class="wiki" data-wiki="${esc(k)}" data-wikival="${esc(v)}" type="button">?</button>
-          <button class="icon-btn del" data-deltag="${esc(k)}" aria-label="Remove">✕</button>
+          <button class="wiki" data-wiki="${esc(k)}" data-wikival="${esc(v)}" type="button" aria-label="Wiki">${icon('help')}</button>
+          <button class="icon-btn del" data-deltag="${esc(k)}" aria-label="Remove">${icon('x')}</button>
         </div>`).join('')
       : '<p class="muted">No tags yet.</p>';
   }
@@ -188,7 +191,7 @@ export async function openEditor(feature, opts = {}) {
       <div class="kv" data-i="${i}">
         <input class="k" value="${esc(k)}" placeholder="field, e.g. households">
         <input class="v" value="${esc(v)}" placeholder="value">
-        <button class="icon-btn del" data-delextra="${esc(k)}" aria-label="Remove">✕</button>
+        <button class="icon-btn del" data-delextra="${esc(k)}" aria-label="Remove">${icon('x')}</button>
       </div>`).join('') || '<p class="muted">e.g. households=12, water_quality=turbid, interviewed=yes</p>';
   }
 
