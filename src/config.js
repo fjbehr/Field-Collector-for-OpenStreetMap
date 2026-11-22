@@ -1,0 +1,70 @@
+// Central configuration.
+//
+// OAuth2 client IDs: register the app once per OSM server (see README.md,
+// "Register the app with OpenStreetMap"). The client ID is public, so it can
+// be compiled into the app; students then only need their own OSM account.
+// The values can also be overridden at runtime in Settings.
+
+export const APP_NAME = 'OSM Field Collector';
+export const APP_VERSION = '0.1.0';
+
+// Custom URL scheme that Android routes back to the app after OSM login.
+// Must match the intent filter in android/app/src/main/AndroidManifest.xml
+// and the redirect URI registered at openstreetmap.org.
+export const OAUTH_REDIRECT_URI = 'osmfieldcollector://oauth';
+export const OAUTH_SCOPES = 'read_prefs write_api';
+
+export const OSM_SERVERS = {
+  production: {
+    label: 'OpenStreetMap (live)',
+    web: 'https://www.openstreetmap.org',
+    api: 'https://api.openstreetmap.org',
+    clientId: 'pp1Q4fCfa-rCqDRX80-27ZvM0awTCK6OjFFS8-G7hyQ', // public client ID (www.openstreetmap.org/oauth2/applications)
+  },
+  dev: {
+    label: 'OSM test server (master.apis.dev)',
+    web: 'https://master.apis.dev.openstreetmap.org',
+    api: 'https://master.apis.dev.openstreetmap.org',
+    clientId: '', // <-- client ID registered on the dev server
+  },
+};
+
+// Base maps. OSM tiles may be cached passively (tiles you have looked at),
+// but bulk pre-downloading of tile.openstreetmap.org is not allowed by the
+// OSM tile usage policy. Use an offline .pmtiles file for areas without
+// network (see README.md, "Offline base map").
+export const BASEMAPS = {
+  osm: {
+    label: 'OpenStreetMap',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    maxNativeZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  esri: {
+    label: 'Esri World Imagery (aerial)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    maxNativeZoom: 19,
+    attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+  },
+};
+
+export const DEFAULT_SETTINGS = {
+  project: 'My survey',
+  email: '',
+  server: 'production',
+  clientIdProduction: '',
+  clientIdDev: '',
+  basemap: 'osm',
+  customTileUrl: '',
+  changesetComment: '',
+  changesetHashtags: '',
+  // GPS
+  averageSeconds: 5,
+  maxAccuracy: 20, // metres; fixes worse than this are ignored while recording
+  minDistance: 3, // metres between automatically recorded way points
+  simplifyTolerance: 1.5, // metres (Douglas-Peucker) applied to GPS-recorded ways
+  tileCacheMax: 20000, // max number of cached tiles
+};
+
+// Start view when no GPS fix is available yet: Tamale, Northern Region, Ghana.
+export const START_VIEW = { lat: 9.4034, lon: -0.8424, zoom: 13 };

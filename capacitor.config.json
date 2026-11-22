@@ -1,0 +1,9 @@
+{
+  "appId": "app.osmfield.collector",
+  "appName": "OSM Field Collector",
+  "webDir": "dist",
+  "android": {
+    "useLegacyBridge": true,
+    "appendUserAgent": "OSMFieldCollector/0.1"
+  }
+}
