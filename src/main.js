@@ -21,6 +21,7 @@ import { getFavourites, setTemplateFavourites } from './favourites.js';
 import { deletePhotosOf } from './photos.js';
 import { encodeTemplate, decodeTemplate, validateTemplate, qrSvg, scanQr, FIELD_TYPES } from './template.js';
 import { showTutorial } from './tutorial.js';
+import { parseCoordinates, searchOffline, searchOnline, rememberPlace, recentPlaces } from './search.js';
 import {
   $, $$, esc, toast, openSheet, closeSheet, hasOpenSheet, closeDialog,
   confirmDialog, alertDialog, promptDialog, choiceDialog, busy,
@@ -51,6 +52,7 @@ let baseLayer = null;
 const existingLayer = L.layerGroup().addTo(map);
 const featureLayer = L.layerGroup().addTo(map);
 const recordLayer = L.layerGroup().addTo(map);
+const searchLayer = L.layerGroup().addTo(map);
 const gpsAccuracy = L.circle([0, 0], { radius: 1, color: '#1a73e8', weight: 1, fillOpacity: 0.12, interactive: false });
 const gpsDot = L.circleMarker([0, 0], { radius: 7, color: '#fff', weight: 2, fillColor: '#1a73e8', fillOpacity: 1, interactive: false });
 
@@ -1197,6 +1199,92 @@ $('#btn-follow').addEventListener('click', () => setFollow(!state.follow));
 $('#btn-zoom-in').addEventListener('click', () => map.zoomIn());
 $('#btn-zoom-out').addEventListener('click', () => map.zoomOut());
 $('#project-name').addEventListener('click', switchProject);
+$('#btn-search').addEventListener('click', openSearch);
+
+// ======================================================================
+// Find a place (Nominatim online, local data offline, coordinates)
+// ======================================================================
+function showPlace(r) {
+  closeSheet();
+  setFollow(false);
+  searchLayer.clearLayers();
+  const b = r.bounds;
+  const big = b && (Math.abs(b[1][0] - b[0][0]) > 0.0005 || Math.abs(b[1][1] - b[0][1]) > 0.0005);
+  if (big) map.fitBounds(b, { maxZoom: 18, padding: [30, 30] });
+  else map.setView([r.lat, r.lon], Math.max(map.getZoom(), 17));
+  L.marker([r.lat, r.lon], {
+    interactive: false,
+    icon: L.divIcon({ className: '', html: `<div class="place-pin">${icon('point')}</div>`, iconSize: [36, 36], iconAnchor: [18, 34] }),
+  }).addTo(searchLayer).bindTooltip(esc(r.name), { permanent: true, direction: 'top', offset: [0, -32], className: 'place-label' });
+  clearTimeout(showPlace.timer);
+  showPlace.timer = setTimeout(() => searchLayer.clearLayers(), 60000);
+}
+
+function openSearch() {
+  const sheet = openSheet({
+    title: 'Find a place',
+    body: `
+      <form class="search-form" autocomplete="off">
+        <div class="search-wrap">${icon('search')}<input type="search" class="search" enterkeyhint="search" placeholder="Village, street, school … or 9.4034, -0.8424"></div>
+        <button class="btn primary" type="submit">Search</button>
+      </form>
+      <div class="search-results"></div>
+      <p class="hint">Online: <a href="#" data-nominatim>Nominatim</a> · © OpenStreetMap contributors. Without network, your own data, the loaded OSM data and places found before are searched.</p>`,
+  });
+  const input = $('.search', sheet);
+  const box = $('.search-results', sheet);
+  let results = [];
+  const item = (r, i) => `<button class="place-item" data-i="${i}">
+      <span class="pi-ico">${icon(r.source === 'own' ? 'map-pinned' : r.source === 'recent' ? 'history' : r.source === 'coords' ? 'crosshair' : 'point')}</span>
+      <span class="pi-text"><b>${esc(r.name)}</b><small>${esc(r.detail || '')}</small></span></button>`;
+  const render = (groups) => {
+    results = groups.flatMap((g) => g.items);
+    let i = 0;
+    box.innerHTML = groups.filter((g) => g.items.length || g.msg).map((g) => `<div class="pick-group"><h4>${g.title}</h4>
+      ${g.items.map((r) => item(r, i++)).join('')}${g.msg ? `<p class="muted">${g.msg}</p>` : ''}</div>`).join('');
+  };
+  recentPlaces().then((rec) => { if (!input.value && rec.length) render([{ title: `${icon('history', 'sm')}Recent places`, items: rec.map((r) => ({ ...r, source: 'recent' })) }]); });
+
+  $('.search-form', sheet).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) return;
+    input.blur();
+    const c = parseCoordinates(q);
+    if (c) {
+      const r = { name: `${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}`, detail: 'coordinates', lat: c.lat, lon: c.lon, source: 'coords' };
+      render([{ title: 'Coordinates', items: [r] }]);
+      return showPlace(r);
+    }
+    const local = await searchOffline(q, { existing: state.existing, features: [...state.features.values()] });
+    const localGroup = { title: `${icon('save-phone', 'sm')}On the phone`, items: local };
+    if (!navigator.onLine) {
+      return render([localGroup, { title: 'OpenStreetMap (online)', items: [], msg: 'No network – online search is not available.' }]);
+    }
+    render([localGroup, { title: 'OpenStreetMap (online)', items: [], msg: 'Searching…' }]);
+    try {
+      const bb = map.getBounds();
+      const online = await searchOnline(q, { viewbox: [bb.getWest(), bb.getSouth(), bb.getEast(), bb.getNorth()], language: navigator.language });
+      render([localGroup, { title: `${icon('map-pinned', 'sm')}OpenStreetMap (Nominatim)`, items: online, msg: online.length ? '' : 'Nothing found.' }]);
+    } catch (err) {
+      render([localGroup, { title: 'OpenStreetMap (online)', items: [], msg: esc(err.message) }]);
+    }
+  });
+  box.addEventListener('click', async (e) => {
+    const b = e.target.closest('.place-item');
+    if (!b) return;
+    const r = results[Number(b.dataset.i)];
+    if (r.source !== 'coords') rememberPlace(r).catch(() => {});
+    showPlace(r);
+  });
+  sheet.addEventListener('click', (e) => {
+    if (e.target.closest('[data-nominatim]')) {
+      e.preventDefault();
+      Browser.open({ url: 'https://nominatim.org/' }).catch(() => {});
+    }
+  });
+  setTimeout(() => input.focus(), 250);
+}
 
 function updateCounts() {
   const pending = [...state.features.values()].filter((f) => f.status !== 'uploaded').length;

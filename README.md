@@ -29,6 +29,7 @@ Technology: HTML/CSS/**JavaScript** (no framework) + [Capacitor 8](https://capac
 | **Connect & correct** | New ways are **connected** to loaded OSM ways (existing node reused, or a junction node inserted into the existing way) and to each other; **existing OSM objects** can be tapped to correct their tags |
 | **Upload** | OAuth 2.0 (PKCE) login, one changeset per upload with `source=survey`, comment and hashtags; validation before upload; live server or the OSM **test server**; optionally the raw GPS tracks to *My GPS traces* |
 | **Export** | ZIP for QGIS (GeoJSON + GPX + photos), GeoJSON, GPX, OSM XML, backup JSON → e-mail (pre-filled with your address), Android share sheet (WhatsApp, Drive, Bluetooth…) or *Documents/OSMFieldCollector* |
+| **Find a place** | Search button (top bar): online via [Nominatim](https://nominatim.org) (OSM data, policy-compliant: search on request only, max. 1/s, cached); offline in your own data, the loaded OSM data and recently found places; coordinates such as `9.4034, -0.8424` work offline |
 | **Look & feel** | Light and dark theme (follows the phone or fixed in Settings), large touch targets, short tutorial on first start (Help → Show the tutorial) |
 
 ---
@@ -145,6 +146,7 @@ src/editor.js         tag editor & preset picker (favourites, photos, survey for
 src/favourites.js     favourites & recently used tag sets
 src/photos.js         photo capture, scaling, storage, viewer
 src/snap.js           connecting new ways to existing ways
+src/search.js         place search (Nominatim, offline, coordinates)
 src/template.js       project templates: QR code (create/scan), file import
 src/tutorial.js       first-start tutorial
 src/theme.js          light / dark theme

@@ -495,3 +495,23 @@ details.cat[open] > summary .chev { transform: rotate(180deg); }
 .tut-dots span.on { width: 22px; background: var(--primary); }
 .tut-actions { display: flex; justify-content: space-between; gap: 10px; }
 .tut-actions .btn { min-width: 120px; }
+
+/* ---------- place search ---------- */
+.top-icon {
+  flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(255, 255, 255, 0.12); color: #fff;
+}
+.top-icon:active { background: rgba(255, 255, 255, 0.24); }
+.top-icon svg.i { width: 21px; height: 21px; }
+.search-form { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.search-form .search-wrap { flex: 1; margin: 0; }
+.place-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 10px 4px; min-height: 56px; background: none; border: 0; border-top: 1px solid var(--surface);
+}
+.place-item:active { background: var(--surface); }
+.place-item small { color: var(--muted); font-size: 0.78rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.place-pin { width: 36px; height: 36px; color: #e03131; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4)); animation: drop 0.4s ease-out; }
+.place-pin svg.i { width: 36px; height: 36px; fill: #fff; }
+@keyframes drop { from { transform: translateY(-24px); opacity: 0; } }
+.leaflet-tooltip.place-label { font-weight: 700; }
