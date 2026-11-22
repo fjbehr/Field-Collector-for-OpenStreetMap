@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- OSM Field Collector app icon. 108x108 = Android adaptive icon canvas,
+       the visible "safe zone" is the circle r=33 around the centre. -->
+  <rect width="108" height="108" fill="#13293d"/>
+  <g id="foreground">
+    <!-- folded map -->
+    <path d="M32,40 L46.5,36 L46.5,72 L32,76 Z" fill="#ffffff"/>
+    <path d="M46.5,36 L61.5,40 L61.5,76 L46.5,72 Z" fill="#cfdeec"/>
+    <path d="M61.5,40 L76,36 L76,72 L61.5,76 Z" fill="#ffffff"/>
+    <!-- surveyed path -->
+    <path d="M36,67 C42,58 49,65 55.5,56.5" fill="none" stroke="#2f9e44" stroke-width="3.6" stroke-linecap="round"/>
+    <!-- location pin -->
+    <path d="M58,21 C51.1,21 45.5,26.6 45.5,33.5 C45.5,42.4 58,55.5 58,55.5 C58,55.5 70.5,42.4 70.5,33.5 C70.5,26.6 64.9,21 58,21 Z" fill="#f76707"/>
+    <path d="M53.2,33.5 a4.8,4.8 0 1,0 9.6,0 a4.8,4.8 0 1,0 -9.6,0 Z" fill="#ffffff"/>
+  </g>
+</svg>

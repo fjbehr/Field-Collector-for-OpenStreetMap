@@ -14,7 +14,13 @@ import { featureLabel, isAreaTags, matchPreset } from './presets.js';
 import { icon, categoryIcon, renderIcons } from './icons.js';
 import { openEditor } from './editor.js';
 import * as osm from './osm.js';
-import { FORMATS, buildFiles, safeName, sendEmail, shareFiles, saveToDocuments } from './export.js';
+import { FORMATS, buildFiles, safeName, sendEmail, shareFiles, saveToDocuments, toGPX } from './export.js';
+import { setTheme } from './theme.js';
+import { findSnap, metresPerPixel } from './snap.js';
+import { getFavourites, setTemplateFavourites } from './favourites.js';
+import { deletePhotosOf } from './photos.js';
+import { encodeTemplate, decodeTemplate, validateTemplate, qrSvg, scanQr, FIELD_TYPES } from './template.js';
+import { showTutorial } from './tutorial.js';
 import {
   $, $$, esc, toast, openSheet, closeSheet, hasOpenSheet, closeDialog,
   confirmDialog, alertDialog, promptDialog, choiceDialog, busy,
@@ -30,6 +36,7 @@ const state = {
   follow: true,
   existing: null,
   showExisting: true,
+  templates: {}, // project name → survey template
 };
 
 // ======================================================================
@@ -78,12 +85,13 @@ const STYLE = {
   new: { color: '#e8590c', fill: '#ff922b' },
   uploaded: { color: '#2b8a3e', fill: '#51cf66' },
   untagged: { color: '#c92a2a', fill: '#ff6b6b' },
+  edited: { color: '#7048e8', fill: '#9775fa' },
 };
-const statusOf = (f) => (f.status === 'uploaded' ? 'uploaded' : Object.keys(f.tags || {}).length ? 'new' : 'untagged');
-function styleOf(f) {
-  if (f.status === 'uploaded') return STYLE.uploaded;
-  return Object.keys(f.tags || {}).length ? STYLE.new : STYLE.untagged;
-}
+const statusOf = (f) => (f.status === 'uploaded' ? 'uploaded' : f.kind === 'edit' ? 'edited' : Object.keys(f.tags || {}).length ? 'new' : 'untagged');
+const styleOf = (f) => STYLE[statusOf(f)];
+const STATUS_LABEL = { uploaded: 'Uploaded', new: 'New', untagged: 'No tags', edited: 'Edited' };
+// Existing OSM data can only be used (connect, edit) on the server it was loaded from.
+const existingForServer = () => (state.existing && state.existing.server === osm.serverConfig(state.settings).key ? state.existing : null);
 
 function renderFeatures() {
   featureLayer.clearLayers();
@@ -118,19 +126,54 @@ function renderExisting() {
   const d = state.existing;
   if (!d || !state.showExisting) return;
   for (const w of d.ways) {
-    const closed = w.c.length > 3 && w.c[0] === w.c.at(-1);
-    const opts = { color: '#6c757d', weight: 2, opacity: 0.8, dashArray: w.tags.highway ? null : '4 4', interactive: true };
+    const closed = w.n ? w.n.length > 3 && w.n[0] === w.n.at(-1) : w.c.length > 3 && w.c[0] === w.c.at(-1);
+    const opts = { color: '#6c757d', weight: 3, opacity: 0.8, dashArray: w.tags.highway ? null : '4 4', interactive: true };
     const layer = closed && isAreaTags(w.tags) ? L.polygon(w.c, { ...opts, fillOpacity: 0.08 }) : L.polyline(w.c, opts);
     layer.bindTooltip(esc(osmLabel(w.tags, `way ${w.id}`)));
+    layer.on('click', () => onExistingClick('way', w));
     layer.addTo(existingLayer);
   }
   for (const p of d.points) {
-    L.circleMarker(p.c, { radius: 5, color: '#495057', weight: 1, fillColor: '#adb5bd', fillOpacity: 0.9 })
+    L.circleMarker(p.c, { radius: 6, color: '#495057', weight: 1, fillColor: '#adb5bd', fillOpacity: 0.9 })
       .bindTooltip(esc(osmLabel(p.tags, `node ${p.id}`)))
+      .on('click', () => onExistingClick('node', p))
       .addTo(existingLayer);
   }
 }
 const osmLabel = (t, fallback) => t.name || featureLabel({ tags: t, type: 'node' }) || fallback;
+
+// Tap on an existing OSM object: edit its tags (uploaded as a modification).
+async function onExistingClick(osmType, obj) {
+  if (state.recording) return;
+  if (!existingForServer()) return alertDialog('These OSM data were loaded from another server. Load the existing OSM data again (More → Load existing OSM data).');
+  if (obj.v == null || (osmType === 'way' && !obj.n)) {
+    return alertDialog('These OSM data were loaded with an older app version. Load them again (More → Load existing OSM data) to edit them.');
+  }
+  const open = [...state.features.values()].find((f) => f.kind === 'edit' && f.osmType === osmType && f.osmId === obj.id && f.status !== 'uploaded');
+  if (open) return editFeature(open.id);
+  const tags = Object.entries(obj.tags).map(([k, v]) => `${k}=${v}`).join(' · ') || 'no tags';
+  const v = await choiceDialog(esc(osmLabel(obj.tags, `${osmType} ${obj.id}`)), [
+    { value: 'edit', icon: 'edit', label: 'Edit tags of this OSM object', desc: esc(tags.length > 160 ? `${tags.slice(0, 160)}…` : tags) },
+    { value: 'web', icon: 'map-pinned', label: 'Show on openstreetmap.org', desc: `${osmType} ${obj.id} · version ${obj.v} (needs network)` },
+  ]);
+  if (v === 'web') {
+    Browser.open({ url: `${osm.serverConfig(state.settings).web}/${osmType}/${obj.id}` }).catch(() => {});
+    return;
+  }
+  if (v !== 'edit') return;
+  const closed = osmType === 'way' && obj.n.length > 3 && obj.n[0] === obj.n.at(-1);
+  const f = await newFeature({
+    kind: 'edit', osmType, osmId: obj.id, version: obj.v, osmServer: state.existing.server, source: 'osm',
+    baseTags: { ...obj.tags }, tags: { ...obj.tags },
+    ...(osmType === 'node'
+      ? { type: 'node', lat: obj.c[0], lon: obj.c[1] }
+      : { type: 'way', closed, nodeIds: [...obj.n], nodes: (closed ? obj.c.slice(0, -1) : obj.c).map(([lat, lon]) => ({ lat, lon })) }),
+  });
+  // closing the editor without saving removes the (unchanged) copy again
+  editFeature(f.id, false, {
+    onCancel: async () => { await db.deleteFeature(f.id); state.features.delete(f.id); renderFeatures(); },
+  });
+}
 
 map.on('dragstart', () => setFollow(false));
 
@@ -199,22 +242,29 @@ async function newFeature(props) {
   return f;
 }
 
-function editFeature(id, isNew = false) {
+function editFeature(id, isNew = false, extra = {}) {
   const f = state.features.get(id);
   if (!f) return;
+  const tpl = state.templates[f.project];
   openEditor(f, {
     isNew,
+    formFields: tpl?.fields || [],
+    formName: tpl ? `template “${tpl.project}”` : '',
+    getPosition: () => gps.lastFix(),
+    photoMaxSize: state.settings.photoMaxSize,
+    onCancel: extra.onCancel,
     onSave: async (updated) => {
       await db.saveFeature(updated);
       state.features.set(updated.id, updated);
       renderFeatures();
     },
     onDelete: async (d) => {
+      await deletePhotosOf(state.features.get(d.id) || d);
       await db.deleteFeature(d.id);
       state.features.delete(d.id);
       renderFeatures();
     },
-    onMove: f.type === 'node' ? moveNode : null,
+    onMove: f.type === 'node' && f.kind !== 'edit' ? moveNode : null,
   });
 }
 
@@ -359,7 +409,9 @@ function updateRecordPanel() {
   const ll = r.nodes.map((p) => [p.lat, p.lon]);
   if (ll.length) {
     L.polyline(ll, { color: '#d6336c', weight: 4, dashArray: r.paused ? '6 6' : null }).addTo(recordLayer);
-    ll.forEach((c) => L.circleMarker(c, { radius: 3, color: '#d6336c', weight: 1, fillOpacity: 1 }).addTo(recordLayer));
+    r.nodes.forEach((p) => L.circleMarker([p.lat, p.lon], p.snapped
+      ? { radius: 7, color: '#7048e8', weight: 3, fillColor: '#fff', fillOpacity: 1 }
+      : { radius: 3, color: '#d6336c', weight: 1, fillOpacity: 1 }).addTo(recordLayer));
   }
   const fix = gps.lastFix();
   const info = $('#record-panel [data-info]');
@@ -369,15 +421,29 @@ function updateRecordPanel() {
   info.textContent = `${r.paused ? 'paused · ' : ''}${r.nodes.length} points · ${fmtDistance(len)}${accTxt}`;
 }
 
+// Connect a new way point to an existing way / point nearby (see snap.js).
+function snapPoint(pt, onMap = false) {
+  const s = state.settings;
+  if (!(s.snapDistance > 0)) return pt;
+  const maxDist = onMap ? Math.min(Math.max(14 * metresPerPixel(map), 0.5), 30) : s.snapDistance;
+  const hit = findSnap(pt, { existing: existingForServer(), features: [...state.features.values()], maxDist });
+  if (!hit) return pt;
+  toast(`Connected to ${hit.label}`);
+  const out = { ...pt, lat: hit.lat, lon: hit.lon, snapped: hit.kind };
+  if (hit.osmNode) out.osmNode = hit.osmNode;
+  if (hit.snapWay) out.snapWay = hit.snapWay;
+  return out;
+}
+
 async function recordAddPoint() {
   const r = state.recording;
   if (r.mode === 'crosshair') {
     const c = map.getCenter();
-    r.nodes.push({ lat: c.lat, lon: c.lng, time: Date.now(), accuracy: null });
+    r.nodes.push(snapPoint({ lat: c.lat, lon: c.lng, time: Date.now(), accuracy: null }, true));
   } else {
     const pos = await captureAveraged();
     if (!pos || !state.recording) return;
-    r.nodes.push({ lat: pos.lat, lon: pos.lon, time: Date.now(), accuracy: pos.accuracy });
+    r.nodes.push(snapPoint({ lat: pos.lat, lon: pos.lon, time: Date.now(), accuracy: pos.accuracy }));
   }
   await persistRecording();
   updateRecordPanel();
@@ -398,14 +464,20 @@ async function finishWay(closed) {
     const ring = closed ? [...nodes, nodes[0]] : nodes;
     nodes = simplify(ring, state.settings.simplifyTolerance);
     if (closed) nodes = nodes.slice(0, -1);
+    else if (nodes.length >= 2) {
+      // a walked path usually starts / ends at an existing road
+      nodes = [snapPoint(nodes[0]), ...nodes.slice(1, -1), snapPoint(nodes.at(-1))];
+    }
   }
   const acc = r.nodes.filter((n) => n.accuracy != null).map((n) => n.accuracy);
+  const connected = nodes.some((p) => p.osmNode || p.snapWay);
   const f = await newFeature({
     type: 'way',
     closed,
     mode: r.mode,
     nodes,
     track,
+    ...(connected ? { osmServer: state.existing?.server } : {}),
     accuracy: acc.length ? acc.reduce((a, b) => a + b, 0) / acc.length : null,
   });
   await stopRecording();
@@ -450,7 +522,7 @@ $('#record-panel').addEventListener('click', async (e) => {
     ]);
     if (what === 'center') {
       const c = map.getCenter();
-      r.nodes.push({ lat: c.lat, lon: c.lng, time: Date.now(), accuracy: null });
+      r.nodes.push(snapPoint({ lat: c.lat, lon: c.lng, time: Date.now(), accuracy: null }, true));
       await persistRecording();
       updateRecordPanel();
     } else if (what === 'cancel' && (await confirmDialog(`Discard ${r.nodes.length} recorded points?`, 'Discard', 'Keep recording', true))) {
@@ -485,8 +557,8 @@ function openList() {
           <span class="ficon ${statusOf(f)}">${categoryIcon(matchPreset(f.tags || {})?.category)}</span>
           <span class="ftext"><b>${esc(featureLabel(f))}</b>
           <small>${icon(f.type === 'node' ? 'point' : f.closed ? 'area' : 'line', 'sm')}${f.type === 'node' ? 'Point' : f.closed ? `Area · ${fmtArea(ringArea(f.nodes))}` : `Line · ${fmtDistance(lineLength(f.nodes))}`}
-            · ${new Date(f.created).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}${all ? ` · ${esc(f.project)}` : ''}</small></span>
-          <span class="pill ${statusOf(f)}">${{ uploaded: 'Uploaded', new: 'New', untagged: 'No tags' }[statusOf(f)]}</span>
+            ${f.kind === 'edit' ? ` · OSM ${f.osmType} ${f.osmId}` : ` · ${new Date(f.created).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`}${f.photos?.length ? ` · ${icon('camera', 'sm')}${f.photos.length}` : ''}${all ? ` · ${esc(f.project)}` : ''}</small></span>
+          <span class="pill ${statusOf(f)}">${STATUS_LABEL[statusOf(f)]}</span>
         </button>`).join('')
       : `<div class="empty">${icon('map-pinned')}<p><b>Nothing collected yet</b><br>Use <b>Point</b> or <b>Way</b> on the map to start.</p></div>`;
   };
@@ -503,7 +575,7 @@ function openList() {
       const up = projectFeatures(all).filter((f) => f.status === 'uploaded');
       if (!up.length) return toast('No uploaded features to remove');
       if (await confirmDialog(`Remove ${up.length} uploaded features from the phone? Export them first if you still need them for QGIS.`, 'Remove', 'Cancel', true)) {
-        for (const f of up) { await db.deleteFeature(f.id); state.features.delete(f.id); }
+        for (const f of up) { await deletePhotosOf(f); await db.deleteFeature(f.id); state.features.delete(f.id); }
         renderFeatures();
         render();
       }
@@ -540,15 +612,21 @@ async function openUpload() {
            <button class="btn small" data-logout>${icon('logout')}Log out</button></div>`
       : `<div class="login-row"><span class="avatar off">${icon('login')}</span><span class="grow">Not logged in<br><small class="muted">${esc(srv.label)} – free account on ${esc(srv.web.replace('https://', ''))}</small></span>
            <button class="btn small primary" data-loginbtn>${icon('login')}Log in</button></div>`;
+    if (auth && s.uploadTraces && !osm.canUploadTraces(auth)) {
+      $('[data-login]', sheet).insertAdjacentHTML('beforeend', `<p class="hint">${icon('info', 'sm')}To upload GPS traces, log out and log in again (the new permission “Upload GPS traces” must be granted).</p>`);
+    }
   }
   function pending() {
     return projectFeatures(all).filter((f) => f.status !== 'uploaded');
   }
+  const serverProblem = (f) => (f.osmServer && f.osmServer !== srv.key ? [`#${f.id}: refers to data of the other OSM server`] : []);
+  const problemsOf = (list) => [...osm.validate(list), ...list.flatMap(serverProblem)];
   function renderSummary() {
     const list = pending();
-    const problems = osm.validate(list);
-    const nodes = list.filter((f) => f.type === 'node').length;
-    $('[data-summary]', sheet).innerHTML = `${icon('upload', 'lead')}<b>${list.length}</b> features to upload (${nodes} points, ${list.length - nodes} ways)` +
+    const problems = problemsOf(list);
+    const edits = list.filter((f) => f.kind === 'edit').length;
+    const nodes = list.filter((f) => f.type === 'node' && f.kind !== 'edit').length;
+    $('[data-summary]', sheet).innerHTML = `${icon('upload', 'lead')}<b>${list.length}</b> to upload: ${nodes} points, ${list.length - nodes - edits} ways${edits ? `, ${edits} edited OSM objects` : ''}` +
       (problems.length ? `<div class="warn"><b>${problems.length} problem(s) – these features will be skipped:</b><br>${problems.slice(0, 8).map(esc).join('<br>')}</div>` : '');
   }
   await renderLogin();
@@ -566,7 +644,7 @@ async function openUpload() {
       const comment = $('[data-comment]', sheet).value.trim();
       if (comment.length < 10) return alertDialog('Please describe your changes in the changeset comment (at least 10 characters).');
       if (!navigator.onLine) return alertDialog('No network connection. Try again when you are online.');
-      const ok = pending().filter((f) => !osm.validate([f]).length);
+      const ok = pending().filter((f) => !problemsOf([f]).length);
       if (!ok.length) return alertDialog('Nothing to upload.');
       if (srv.key === 'production' && !(await confirmDialog(`Upload ${ok.length} features to the live OpenStreetMap database? They will be visible to everyone.`, 'Upload'))) return;
       state.settings.changesetComment = comment;
@@ -577,8 +655,24 @@ async function openUpload() {
         for (const f of ok) {
           f.status = 'uploaded';
           f.osmId = res.idMap.get(f.id);
+          if (res.versions.has(f.id)) f.version = res.versions.get(f.id);
           f.changeset = res.changesetId;
           await db.saveFeature(f);
+        }
+        await updateExistingAfterUpload(res, ok);
+        // optional: raw GPS tracks of walked ways → "My GPS traces"
+        const walked = ok.filter((f) => f.type === 'way' && f.track?.length > 1);
+        if (s.uploadTraces && walked.length) {
+          b.update('Uploading GPS traces…');
+          try {
+            await osm.uploadTrace(s, {
+              name: `${safeName(s.project)}_${new Date().toISOString().slice(0, 10)}.gpx`,
+              gpx: toGPX(walked),
+              description: `${comment} (changeset ${res.changesetId})`,
+            });
+          } catch (err) {
+            toast(`GPS traces not uploaded: ${err.message}`, 6000);
+          }
         }
         b.close();
         renderFeatures();
@@ -598,6 +692,30 @@ async function openUpload() {
 }
 let uploadSheet = null;
 
+// Keep the offline copy of the existing OSM data in step with what was just
+// uploaded (new versions, junction nodes inserted into existing ways).
+async function updateExistingAfterUpload(res, uploaded) {
+  const d = state.existing;
+  if (!d || d.server !== osm.serverConfig(state.settings).key) return;
+  const coordOf = new Map();
+  for (const w of d.ways) w.n?.forEach((id, i) => coordOf.set(id, w.c[i]));
+  for (const [id, c] of res.nodeCoords) coordOf.set(id, c);
+  for (const mw of res.modifiedWays) {
+    const w = d.ways.find((x) => x.id === mw.id);
+    if (!w) continue;
+    w.v = mw.v;
+    w.n = mw.n;
+    w.c = mw.n.map((id) => coordOf.get(id));
+    w.tags = { ...mw.tags };
+  }
+  for (const f of uploaded.filter((x) => x.kind === 'edit' && x.osmType === 'node')) {
+    const p = d.points.find((x) => x.id === f.osmId);
+    if (p) { p.v = f.version; p.tags = { ...f.tags }; }
+  }
+  await db.kvSet('existingOsm', d);
+  renderExisting();
+}
+
 // ======================================================================
 // Export / email
 // ======================================================================
@@ -609,7 +727,8 @@ function openExport() {
       <label class="inline-check"><input type="checkbox" data-all> all projects (otherwise only “${esc(s.project)}”)</label>
       <div class="card" data-count></div>
       <fieldset class="formats">${Object.entries(FORMATS).map(([k, f]) =>
-        `<label class="inline-check"><input type="checkbox" value="${k}" ${k === 'geojson' || k === 'gpx' ? 'checked' : ''}> ${esc(f.label)}</label>`).join('')}</fieldset>
+        `<label class="inline-check"><input type="checkbox" value="${k}" ${k === 'zip' ? 'checked' : ''}> ${esc(f.label)}</label>`).join('')}</fieldset>
+      <p class="hint">The ZIP contains the GeoJSON, the GPX and all photos – open the GeoJSON in QGIS after unpacking. The backup file does not contain photos.</p>
       <label class="field"><span>Send to e-mail address</span><input type="email" data-email value="${esc(s.email)}" placeholder="you@example.com"></label>
       <p class="hint">Without network the e-mail waits in your mail app’s outbox. GeoJSON opens directly in QGIS (Layer → Add Vector Layer).</p>`,
     footer: `<button class="btn" data-save>${icon('save-phone')}Save</button><button class="btn" data-share>${icon('share')}Share</button><button class="btn primary" data-mail>${icon('mail')}E-mail</button>`,
@@ -626,7 +745,15 @@ function openExport() {
     if (!list.length) return toast('Nothing to export');
     if (!formats.length) return toast('Choose at least one format');
     const base = safeName($('[data-all]', sheet).checked ? 'osm_survey_all' : s.project);
-    const files = buildFiles(list, formats, s, base);
+    let files;
+    const b = busy('Preparing files…');
+    try {
+      files = await buildFiles(list, formats, s, base);
+    } catch (err) {
+      b.close();
+      return alertDialog(`Export failed: ${esc(err.message)}`);
+    }
+    b.close();
     try {
       if (action.dataset.mail != null) {
         const email = $('[data-email]', sheet).value.trim();
@@ -685,6 +812,14 @@ async function openSettings() {
       <label class="field"><span>Current project</span><input data-k="project" value="${esc(s.project)}"></label>
       <label class="field"><span>My e-mail address (for exports)</span><input type="email" data-k="email" value="${esc(s.email)}"></label>
       <label class="inline-check"><input type="checkbox" data-k="showAllProjects" ${s.showAllProjects ? 'checked' : ''}> show features of all projects on the map</label>
+      <button class="btn small" data-template>${icon('qr')}Project template (survey form)…</button>
+
+      <h3>Appearance</h3>
+      <div class="segmented" role="radiogroup" aria-label="Theme">
+        ${[['auto', 'sun-moon', 'Automatic'], ['light', 'sun', 'Light'], ['dark', 'moon', 'Dark']].map(([v, ic, label]) =>
+          `<label><input type="radio" name="theme" data-k="theme" value="${v}" ${s.theme === v ? 'checked' : ''}><span>${icon(ic)}${label}</span></label>`).join('')}
+      </div>
+      <p class="hint">Automatic follows the dark-mode setting of the phone.</p>
 
       <h3>Map</h3>
       <label class="field"><span>Base map</span><select data-k="basemap">
@@ -709,15 +844,25 @@ async function openSettings() {
       <label class="field"><span>Ignore fixes worse than (m)</span><input data-k="maxAccuracy" inputmode="numeric" value="${s.maxAccuracy}"></label>
       <label class="field"><span>Min. distance between track points (m)</span><input data-k="minDistance" inputmode="decimal" value="${s.minDistance}"></label>
       <label class="field"><span>Simplify walked ways, tolerance (m, 0 = off)</span><input data-k="simplifyTolerance" inputmode="decimal" value="${s.simplifyTolerance}"></label>
+      <label class="field"><span>Connect to existing ways within (m, 0 = off)</span><input data-k="snapDistance" inputmode="decimal" value="${s.snapDistance}"></label>
+      <p class="hint">New way points this close to a loaded OSM way (or to another new way) are joined to it, so paths connect to roads. Load the existing OSM data first.</p>
+
+      <h3>Photos</h3>
+      <label class="field"><span>Photo size</span><select data-k="photoMaxSize">
+        ${[[1024, 'Small (1024 px, ~150 KB)'], [1600, 'Medium (1600 px, ~350 KB)'], [2400, 'Large (2400 px, ~800 KB)']].map(([v, l]) => `<option value="${v}" ${s.photoMaxSize === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
 
       <h3>OpenStreetMap</h3>
       <label class="field"><span>Server</span><select data-k="server">
         ${Object.entries(OSM_SERVERS).map(([k, v]) => `<option value="${k}" ${s.server === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
       <label class="field"><span>Changeset hashtags</span><input data-k="changesetHashtags" value="${esc(s.changesetHashtags)}" placeholder="#UDS #MapGhana"></label>
+      <label class="inline-check"><input type="checkbox" data-k="uploadTraces" ${s.uploadTraces ? 'checked' : ''}> also upload the GPS tracks of walked ways to “My GPS traces”</label>
+      <label class="field"><span>Visibility of uploaded GPS traces</span><select data-k="traceVisibility">
+        ${[['identifiable', 'Identifiable (public, with your name and times)'], ['trackable', 'Trackable (anonymous, with times)'], ['public', 'Public (anonymous points only)'], ['private', 'Private (only you)']].map(([v, l]) => `<option value="${v}" ${s.traceVisibility === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <p class="hint">Needs the extra OSM permission “Upload GPS traces” (write_gpx): tick it in the OAuth app registration, then log out and in again. Not needed for normal uploads.</p>
       <details><summary>OAuth client IDs (advanced)</summary>
         <label class="field"><span>Client ID – live server</span><input data-k="clientIdProduction" value="${esc(s.clientIdProduction)}" placeholder="${OSM_SERVERS.production.clientId ? 'built-in' : 'not set'}"></label>
         <label class="field"><span>Client ID – test server</span><input data-k="clientIdDev" value="${esc(s.clientIdDev)}" placeholder="${OSM_SERVERS.dev.clientId ? 'built-in' : 'not set'}"></label>
-        <p class="hint">Redirect URI to register: <code>osmfieldcollector://oauth</code>, scopes: read_prefs, write_api.</p>
+        <p class="hint">Redirect URI to register: <code>osmfieldcollector://oauth</code>, scopes: read_prefs, write_api (+ write_gpx for GPS traces).</p>
       </details>
 
       <h3>Data</h3>
@@ -745,6 +890,7 @@ async function openSettings() {
       }
       if (k === 'project') v = v.trim() || DEFAULT_SETTINGS.project;
       s[k] = v;
+      if (k === 'theme') setTheme(v);
       await saveSettings();
     } else if (el.dataset.pmtiles != null && el.files[0]) {
       const file = el.files[0];
@@ -789,6 +935,8 @@ async function openSettings() {
       await db.kvDel('basemapInfo');
       if (s.basemap === 'offline') s.basemap = 'osm';
       closeSheet(sheet);
+    } else if (e.target.closest('[data-template]')) {
+      openTemplate();
     } else if (e.target.closest('[data-existing-clear]')) {
       state.existing = null;
       await db.kvDel('existingOsm');
@@ -803,14 +951,16 @@ async function openSettings() {
 // ======================================================================
 async function openMore() {
   const v = await choiceDialog('Menu', [
-    { value: 'export', icon: 'mail', label: 'Export & send by e-mail', desc: 'GeoJSON for QGIS, GPX, OSM, backup' },
-    { value: 'existing', icon: 'download', label: 'Load existing OSM data here', desc: 'see what is already mapped (needs network, kept offline)' },
+    { value: 'export', icon: 'mail', label: 'Export & send by e-mail', desc: 'ZIP for QGIS (with photos), GeoJSON, GPX, OSM, backup' },
+    { value: 'existing', icon: 'download', label: 'Load existing OSM data here', desc: 'to avoid duplicates, connect new ways and correct tags (needs network)' },
     ...(state.existing ? [{ value: 'toggle', icon: state.showExisting ? 'eye-off' : 'eye', label: state.showExisting ? 'Hide existing OSM data' : 'Show existing OSM data' }] : []),
     { value: 'project', icon: 'folder-open', label: 'Switch project', desc: `current: ${esc(state.settings.project)}` },
+    { value: 'template', icon: 'qr', label: 'Project template', desc: state.templates[state.settings.project] ? 'survey form of this project is active' : 'scan the teacher’s QR code, or create one' },
     { value: 'settings', icon: 'settings', label: 'Settings' },
-    { value: 'help', icon: 'help', label: 'Help' },
+    { value: 'help', icon: 'help', label: 'Help & tutorial' },
   ]);
-  if (v === 'export') openExport();
+  if (v === 'template') openTemplate();
+  else if (v === 'export') openExport();
   else if (v === 'existing') loadExisting();
   else if (v === 'toggle') { state.showExisting = !state.showExisting; renderExisting(); }
   else if (v === 'project') switchProject();
@@ -837,19 +987,204 @@ async function switchProject() {
 }
 
 function openHelp() {
-  openSheet({
+  const sheet = openSheet({
     title: 'Help',
     body: `
+      <button class="btn block" data-tutorial>${icon('tip')}Show the tutorial</button>
       <h3>Collecting</h3>
       <p><b>Point</b>: stand at the feature and tap Point → GPS. The position is averaged over a few seconds. For features you cannot reach, move the map so the crosshair is on it.</p>
       <p><b>Way</b>: “Walk it” records a GPS track while you walk (screen may be off). “Corner by corner” is best for buildings and fields: stand at each corner and tap Add point. Finish as <i>line</i> (road, path, river) or <i>area</i> (building, field, compound).</p>
-      <p>Then choose the type (e.g. Borehole, School, Footpath) and fill in the fields. Colours: <span style="color:#e8590c">orange</span> = new, <span style="color:#c92a2a">red</span> = no tags yet, <span style="color:#2b8a3e">green</span> = uploaded.</p>
+      <p>Then choose the type (e.g. Borehole, School, Footpath) and fill in the fields. Colours: <span style="color:#e8590c">orange</span> = new, <span style="color:#c92a2a">red</span> = no tags yet, <span style="color:#7048e8">violet</span> = edited OSM object, <span style="color:#2b8a3e">green</span> = uploaded.</p>
+      <h3>Favourites</h3>
+      <p>In the editor tap <b>${icon('star', 'sm')}Save as favourite</b> to keep the current tags (and private fields), e.g. “Borehole – Afridev, working”. Favourites and recently used values are offered at the top when you choose the type.</p>
+      <h3>Photos</h3>
+      <p>Add photos in the editor. They stay on the phone and are exported in the ZIP for QGIS (attribute “_photo”). They are not uploaded to OSM.</p>
+      <h3>Connecting and correcting</h3>
+      <p>Load the existing OSM data of your area first (More menu, needs network). New ways then connect to existing roads and paths within a few metres (Settings → GPS). Tap a grey existing object to correct its tags; the change is uploaded with your next upload.</p>
+      <h3>Project template</h3>
+      <p>A teacher defines the survey form (questions asked for every feature), hashtags and favourites once: <b>More → Project template</b>, then <b>Show QR code</b>. Students scan it with <b>Scan QR code</b> and get the same project, questions and favourites.</p>
       <h3>Without network</h3>
       <p>Everything is stored on the phone. Upload and e-mail later. Map tiles you looked at before are available offline; for aerial imagery without network import an offline base map (Settings).</p>
       <h3>Uploading</h3>
-      <p>Log in with your OSM account and upload. Try the <b>test server</b> first (Settings → Server). New ways are not connected to existing roads – check and connect them afterwards in iD (openstreetmap.org → Edit) or JOSM.</p>
+      <p>Log in with your OSM account and upload. Try the <b>test server</b> first (Settings → Server). Check your uploaded data afterwards on openstreetmap.org.</p>
       <h3>QGIS</h3>
-      <p>Export as GeoJSON and open it in QGIS. All tags become attributes; your private survey fields too. Attributes starting with “_” are metadata (accuracy, date, project, OSM id).</p>`,
+      <p>Export the ZIP, unpack it and open the GeoJSON in QGIS. All tags become attributes; your private survey fields too. Attributes starting with “_” are metadata (accuracy, date, project, OSM id, photo path).</p>`,
+  });
+  $('[data-tutorial]', sheet).addEventListener('click', () => showTutorial());
+}
+
+// ======================================================================
+// Project template (survey form shared by QR code or file)
+// ======================================================================
+async function saveTemplates() {
+  await db.kvSet('templates', state.templates);
+}
+
+async function applyTemplate(tpl) {
+  const had = state.templates[tpl.project];
+  if (had && !(await confirmDialog(`Replace the template of project “${esc(tpl.project)}”?`, 'Replace'))) return;
+  state.templates[tpl.project] = tpl;
+  await saveTemplates();
+  await setTemplateFavourites(tpl.favourites, tpl.project);
+  state.settings.project = tpl.project;
+  if (tpl.hashtags) state.settings.changesetHashtags = tpl.hashtags;
+  if (tpl.comment) state.settings.changesetComment = tpl.comment;
+  await saveSettings();
+  renderFeatures();
+  alertDialog(`<b>Template loaded</b><br>Project: ${esc(tpl.project)}<br>${tpl.fields.length} survey question(s), ${tpl.favourites.length} favourite(s)${tpl.hashtags ? `<br>Hashtags: ${esc(tpl.hashtags)}` : ''}`);
+}
+
+async function importTemplateText(text) {
+  try {
+    await applyTemplate(decodeTemplate(text));
+  } catch (err) {
+    alertDialog(esc(err.message));
+  }
+}
+
+function openTemplate() {
+  const s = state.settings;
+  const project = s.project;
+  const draft = structuredClone(state.templates[project] || { project, hashtags: s.changesetHashtags, comment: s.changesetComment, fields: [], favourites: [] });
+  let favs = [];
+  const sheet = openSheet({
+    title: 'Project template',
+    body: `
+      <div class="card" data-active></div>
+      <h3>Students: get the template</h3>
+      <div class="btn-row">
+        <button class="btn primary" data-scan>${icon('scan')}Scan QR code</button>
+        <label class="btn">${icon('file-up')}Import file<input type="file" accept=".json,.txt,application/json,text/plain" hidden data-import></label>
+      </div>
+      <h3>Teachers: create the template for “${esc(project)}”</h3>
+      <p class="hint">Questions are asked for every feature of this project (private survey fields – exported to QGIS, not uploaded to OSM).</p>
+      <div class="tpl-fields"></div>
+      <button class="btn small" data-addfield>${icon('plus')}Add question</button>
+      <h3>Favourites in the template</h3>
+      <div class="tpl-favs"></div>
+      <label class="field"><span>Changeset hashtags</span><input data-tk="hashtags" value="${esc(draft.hashtags || '')}" placeholder="#UDS #MapGhana"></label>
+      <label class="field"><span>Default changeset comment</span><input data-tk="comment" value="${esc(draft.comment || '')}" placeholder="Water points in Kpalsi surveyed by UDS students"></label>`,
+    footer: `<button class="btn" data-sharefile>${icon('share')}Share file</button><button class="btn primary" data-qr>${icon('qr')}Show QR code</button>`,
+  });
+
+  const renderActive = () => {
+    const t = state.templates[project];
+    $('[data-active]', sheet).innerHTML = t
+      ? `<div class="login-row"><span class="avatar">${icon('form')}</span><span class="grow"><b>Template active</b> for “${esc(project)}”<br><small class="muted">${t.fields.length} question(s) · ${t.favourites.length} favourite(s)</small></span><button class="btn small" data-remove>${icon('trash')}Remove</button></div>`
+      : `<div class="login-row"><span class="avatar off">${icon('form')}</span><span class="grow"><b>No template</b> for “${esc(project)}”<br><small class="muted">Scan your teacher’s QR code, or create the template below.</small></span></div>`;
+  };
+  const renderFields = () => {
+    $('.tpl-fields', sheet).innerHTML = draft.fields.map((f, i) => `
+      <div class="tpl-field" data-i="${i}">
+        <div class="tpl-row">
+          <input data-f="label" value="${esc(f.label)}" placeholder="Question, e.g. Households using it">
+          <button class="icon-btn del" data-delfield="${i}" aria-label="Remove question">${icon('x')}</button>
+        </div>
+        <div class="tpl-row">
+          <input data-f="key" value="${esc(f.key)}" placeholder="column name, e.g. households" autocapitalize="off">
+          <select data-f="type">${FIELD_TYPES.map((t) => `<option ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        </div>
+        <div class="tpl-row">
+          <input data-f="options" value="${esc((f.options || []).join(', '))}" placeholder="choices for “select”: clear, turbid, smelly" ${f.type === 'select' ? '' : 'hidden'}>
+          <label class="inline-check small"><input type="checkbox" data-f="required" ${f.required ? 'checked' : ''}> required</label>
+        </div>
+      </div>`).join('') || '<p class="muted">No questions yet.</p>';
+  };
+  const renderFavs = () => {
+    const own = favs.filter((f) => !f.template || f.template === project);
+    $('.tpl-favs', sheet).innerHTML = own.length
+      ? own.map((f) => `<label class="inline-check"><input type="checkbox" data-fav="${esc(f.id)}" ${draft.favourites.some((d) => d.name === f.name) ? 'checked' : ''}> ${esc(f.name)}</label>`).join('')
+      : `<p class="muted">No favourites yet – save some in the editor (${icon('star', 'sm')}Save as favourite).</p>`;
+  };
+  const collect = () => {
+    const chosen = new Set($$('[data-fav]:checked', sheet).map((c) => c.dataset.fav));
+    draft.favourites = favs.filter((f) => chosen.has(f.id)).map(({ name, geom, tags, extra }) => ({ name, geom, tags, extra }));
+    draft.fields = draft.fields.filter((f) => f.key.trim());
+    return validateTemplate({ ...draft, project });
+  };
+  const saveDraft = async () => {
+    const tpl = collect();
+    state.templates[project] = tpl;
+    await saveTemplates();
+    await setTemplateFavourites(tpl.favourites, project);
+    s.changesetHashtags = tpl.hashtags;
+    if (tpl.comment) s.changesetComment = tpl.comment;
+    await saveSettings();
+    renderActive();
+    return tpl;
+  };
+
+  renderActive();
+  renderFields();
+  getFavourites().then((f) => { favs = f; renderFavs(); });
+
+  sheet.addEventListener('input', (e) => {
+    const el = e.target;
+    if (el.dataset.tk) draft[el.dataset.tk] = el.value;
+    const row = el.closest('.tpl-field');
+    if (!row || !el.dataset.f) return;
+    const f = draft.fields[Number(row.dataset.i)];
+    if (el.dataset.f === 'options') f.options = el.value.split(',').map((x) => x.trim()).filter(Boolean);
+    else if (el.dataset.f === 'required') f.required = el.checked;
+    else f[el.dataset.f] = el.value;
+    if (el.dataset.f === 'label' && !f.keyEdited) {
+      f.key = el.value.toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+      row.querySelector('[data-f="key"]').value = f.key;
+    }
+    if (el.dataset.f === 'key') f.keyEdited = true;
+  });
+  sheet.addEventListener('change', async (e) => {
+    const el = e.target;
+    const row = el.closest('.tpl-field');
+    if (row && el.dataset.f === 'type') {
+      draft.fields[Number(row.dataset.i)].type = el.value;
+      row.querySelector('[data-f="options"]').hidden = el.value !== 'select';
+    } else if (row && el.dataset.f === 'required') {
+      draft.fields[Number(row.dataset.i)].required = el.checked;
+    } else if (el.dataset.import != null && el.files[0]) {
+      const text = await el.files[0].text();
+      el.value = '';
+      closeSheet(sheet);
+      importTemplateText(text);
+    }
+  });
+  sheet.addEventListener('click', async (e) => {
+    const t = e.target;
+    if (t.closest('[data-scan]')) {
+      const text = await scanQr();
+      if (!text) return;
+      closeSheet(sheet);
+      importTemplateText(text);
+    } else if (t.closest('[data-addfield]')) {
+      draft.fields.push({ key: '', label: '', type: 'text', options: [], required: false });
+      renderFields();
+      $$('.tpl-field [data-f="label"]', sheet).at(-1)?.focus();
+    } else if (t.closest('[data-delfield]')) {
+      draft.fields.splice(Number(t.closest('[data-delfield]').dataset.delfield), 1);
+      renderFields();
+    } else if (t.closest('[data-remove]')) {
+      if (!(await confirmDialog(`Remove the template of “${esc(project)}”? Collected data is kept.`, 'Remove', 'Cancel', true))) return;
+      delete state.templates[project];
+      await saveTemplates();
+      await setTemplateFavourites([], project);
+      closeSheet(sheet);
+      toast('Template removed');
+    } else if (t.closest('[data-qr]')) {
+      const tpl = await saveDraft();
+      const code = encodeTemplate(tpl);
+      if (code.length > 2300) return alertDialog('This template is too large for one QR code. Use “Share file” instead (e.g. via WhatsApp or e-mail).');
+      const { svg } = qrSvg(code);
+      alertDialog(`<div class="qr-box">${svg}</div>
+        <p class="center"><b>${esc(tpl.project)}</b><br><small class="muted">${tpl.fields.length} question(s) · ${tpl.favourites.length} favourite(s)${code.length > 1200 ? ' · large code: hold the phones steady' : ''}</small></p>
+        <p class="hint center">Students: <b>More → Project template → Scan QR code</b></p>`);
+    } else if (t.closest('[data-sharefile]')) {
+      const tpl = await saveDraft();
+      try {
+        await shareFiles([{ name: `${safeName(tpl.project)}_template.json`, mime: 'application/json', data: JSON.stringify(tpl, null, 1) }], `${APP_NAME} template`);
+      } catch (err) {
+        if (!/cancel/i.test(err.message)) alertDialog(`Sharing failed: ${esc(err.message)}`);
+      }
+    }
   });
 }
 
@@ -906,7 +1241,9 @@ window.addEventListener('offline', () => $('#net-badge').hidden = false);
   await db.requestPersistence();
   const stored = await db.kvGet('settings');
   state.settings = { ...DEFAULT_SETTINGS, ...(stored || {}) };
+  setTheme(state.settings.theme);
   setCacheLimit(state.settings.tileCacheMax);
+  state.templates = (await db.kvGet('templates')) || {};
   $('#project-name .name').textContent = state.settings.project;
   for (const f of await db.allFeatures()) state.features.set(f.id, f);
   state.existing = (await db.kvGet('existingOsm')) || null;
@@ -926,8 +1263,12 @@ window.addEventListener('offline', () => $('#net-badge').hidden = false);
       await db.kvDel('recording');
     }
   }
+  if (!(await db.kvGet('tutorialSeen'))) {
+    await showTutorial();
+    await db.kvSet('tutorialSeen', true);
+  }
   if (!stored) {
-    const name = await promptDialog(`Welcome to ${APP_NAME}!<br>Name your first project (e.g. community and topic):`, '', 'Kpalsi water points 2026');
+    const name = await promptDialog(`Name your first project (e.g. community and topic).<br><small class="muted">Got a QR code from your teacher? Skip this and use More → Project template.</small>`, '', 'Kpalsi water points 2026');
     if (name && name.trim()) { state.settings.project = name.trim(); }
     await saveSettings();
   }

@@ -6,13 +6,16 @@
 // The values can also be overridden at runtime in Settings.
 
 export const APP_NAME = 'OSM Field Collector';
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.2.0';
 
 // Custom URL scheme that Android routes back to the app after OSM login.
 // Must match the intent filter in android/app/src/main/AndroidManifest.xml
 // and the redirect URI registered at openstreetmap.org.
 export const OAUTH_REDIRECT_URI = 'osmfieldcollector://oauth';
 export const OAUTH_SCOPES = 'read_prefs write_api';
+// Only requested when "upload GPS traces" is switched on in Settings. The OSM
+// app registration must allow it ("Upload GPS traces" / write_gpx).
+export const OAUTH_SCOPES_GPX = 'read_prefs write_api write_gpx';
 
 export const OSM_SERVERS = {
   production: {
@@ -64,7 +67,19 @@ export const DEFAULT_SETTINGS = {
   minDistance: 3, // metres between automatically recorded way points
   simplifyTolerance: 1.5, // metres (Douglas-Peucker) applied to GPS-recorded ways
   tileCacheMax: 20000, // max number of cached tiles
+  snapDistance: 5, // metres; new way points this close to an existing way/point are connected to it
+  // Appearance
+  theme: 'auto', // auto (follow phone) | light | dark
+  // Photos
+  photoMaxSize: 1600, // longest side in pixels (JPEG)
+  // Upload the raw GPS tracks of walked ways to "My GPS traces" (needs write_gpx)
+  uploadTraces: false,
+  traceVisibility: 'identifiable', // private | trackable | public | identifiable
 };
+
+// Survey template of the current project (from a teacher's QR code / file):
+// { v, project, hashtags, comment, fields: [{ key, label, type, options, required }], favourites: [...] }
+export const TEMPLATE_VERSION = 1;
 
 // Start view when no GPS fix is available yet: Tamale, Northern Region, Ghana.
 export const START_VIEW = { lat: 9.4034, lon: -0.8424, zoom: 13 };

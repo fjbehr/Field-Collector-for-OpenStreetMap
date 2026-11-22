@@ -20,11 +20,16 @@ Technology: HTML/CSS/**JavaScript** (no framework) + [Capacitor 8](https://capac
 | **Points** | GPS position averaged over N seconds (weighted by accuracy), or at the map crosshair |
 | **Ways** | *Walk it* (automatic GPS track, keeps recording with the screen off), *corner by corner* (averaged GPS position per vertex), or *draw on the map*. Finish as line or area. Walked tracks are simplified (Douglas-Peucker); the raw track is kept for GPX export. Interrupted recordings are restored after an app restart. |
 | **Tagging** | ~190 presets in 18 categories (incl. boreholes, CHPS compounds, markets, shea trees, farmland, footpaths…), form fields per preset, raw tag table / text view with key & value suggestions (offline lists + taginfo when online), `?` opens the OSM wiki |
+| **Favourites** | Save the attributes of a feature as a favourite (e.g. "Borehole – Afridev, working") and apply them with one tap; recently used tag sets are offered too |
+| **Photos** | Take photos (or pick from the gallery) per feature; scaled down and stored on the phone, exported in the ZIP for QGIS – never uploaded to OSM |
 | **Private survey fields** | Research attributes (e.g. `households=12`) and notes that are **exported to QGIS but never uploaded** to OSM |
+| **Project templates** | A teacher defines the survey form (questions with type, choices, required), hashtags and favourites once and shares it as a **QR code** or file; students scan it |
 | **Projects** | Each feature belongs to a project (e.g. one community survey); export/upload per project or all |
-| **Offline maps** | Tiles you looked at are cached; import an offline raster base map (`.pmtiles`, e.g. drone/aerial imagery from QGIS); load existing OSM data of an area to avoid duplicates (kept offline) |
-| **Upload** | OAuth 2.0 (PKCE) login, one changeset per upload with `source=survey`, comment and hashtags; validation before upload; live server or the OSM **test server** |
-| **Export** | GeoJSON, GPX, OSM XML, backup JSON → e-mail (pre-filled with your address), Android share sheet (WhatsApp, Drive, Bluetooth…) or *Documents/OSMFieldCollector* |
+| **Offline maps** | Tiles you looked at are cached; import an offline raster base map (`.pmtiles`, e.g. drone/aerial imagery from QGIS); load existing OSM data of an area (kept offline) |
+| **Connect & correct** | New ways are **connected** to loaded OSM ways (existing node reused, or a junction node inserted into the existing way) and to each other; **existing OSM objects** can be tapped to correct their tags |
+| **Upload** | OAuth 2.0 (PKCE) login, one changeset per upload with `source=survey`, comment and hashtags; validation before upload; live server or the OSM **test server**; optionally the raw GPS tracks to *My GPS traces* |
+| **Export** | ZIP for QGIS (GeoJSON + GPX + photos), GeoJSON, GPX, OSM XML, backup JSON → e-mail (pre-filled with your address), Android share sheet (WhatsApp, Drive, Bluetooth…) or *Documents/OSMFieldCollector* |
+| **Look & feel** | Light and dark theme (follows the phone or fixed in Settings), large touch targets, short tutorial on first start (Help → Show the tutorial) |
 
 ---
 
@@ -38,6 +43,9 @@ Uploading needs an OAuth 2.0 *client ID*. You register the app **once**; student
    Redirect URI: `osmfieldcollector://oauth`
    **Uncheck** *Confidential application* (a mobile app cannot keep a secret).
    Permissions: **Read user preferences** and **Modify the map**.
+   Optional: **Upload GPS traces** (`write_gpx`) – only needed if students should also upload their raw GPS tracks
+   (Settings → "also upload the GPS tracks…"). The app only asks for this permission when that setting is on;
+   an existing registration can be edited later to add it.
 3. Copy the **Client ID** into `src/config.js` → `OSM_SERVERS.production.clientId` and rebuild.
    (Alternatively, enter it on the phone under *Settings → OpenStreetMap → OAuth client IDs*.)
 4. For testing, do the same on the test server <https://master.apis.dev.openstreetmap.org> (separate account and
@@ -73,21 +81,28 @@ Open <http://localhost:5173/?sim> – `?sim` simulates a GPS walk in Tamale, so 
 ## 3. Field workflow (for students)
 
 **Before going to the field (with network):**
-1. Create a project (tap the project name at the top).
+1. Create a project (tap the project name at the top) – or scan the teacher's QR code: *More → Project template → Scan QR code*.
 2. Look at the survey area on the map at zoom levels 14–19 so the tiles are cached, *or* import an offline base map (see 4).
-3. *Menu → Load existing OSM data here* (zoomed in on the community) to see what is already mapped.
+3. *More → Load existing OSM data here* (zoomed in on the community): shows what is already mapped, lets new ways connect to it and lets you correct existing objects.
 4. Log in to OSM once (*Upload → Log in*); the login is remembered.
+
+**Teachers: share a survey form.** *More → Project template*: add the questions (e.g. "Households using it" – number –
+required; "Water quality" – select – clear, turbid, smelly), tick favourites, set hashtags, then *Show QR code*
+(students scan it) or *Share file* (WhatsApp/e-mail; students use *Import file*). The answers are private survey fields:
+they appear as columns in QGIS and are never uploaded to OSM.
 
 **In the field (no network needed):**
 * **Point**: stand at the feature → *Point → At my GPS position* → wait for the averaging → choose the type (e.g. *Borehole (hand pump)*) → fill in the fields → *Save*.
 * **Way**: *Way →* choose a mode → walk / add corners → *Finish line* or *Finish area* → choose the type.
-* Use *Private survey fields* for data that is for your research only (e.g. number of users per day, water quality, interview codes). It is exported to QGIS but never uploaded.
+* Use *Private survey fields* (or the template's survey form) for data that is for your research only (e.g. number of users per day, water quality, interview codes). It is exported to QGIS but never uploaded.
+* Add **photos** in the editor; save frequent attribute combinations with **☆ Save as favourite**.
+* Tap a grey (existing) OSM object to correct its tags – the change is uploaded with your next upload (violet = edited).
 * Do **not** put personal data (names of private persons, phone numbers of individuals) into OSM tags.
 
 **Back with network:**
 * *Upload* → write a meaningful changeset comment → *Upload*. Features turn green.
-* *More → Export & send* → GeoJSON + GPX → *E-mail* (to yourself) or *Share*. Make a **Backup** regularly – uninstalling the app deletes its data.
-* New ways are **not connected** to existing roads/paths. Afterwards open the area in iD (openstreetmap.org → *Edit*) or JOSM and connect them.
+* *More → Export & send* → **ZIP for QGIS** (GeoJSON + GPX + photos) → *E-mail* (to yourself) or *Share*. Make a **Backup** regularly – uninstalling the app deletes its data (the backup does not contain photos; keep the ZIP).
+* New ways connect to existing ways within the snap distance (Settings → GPS, default 5 m) if the existing OSM data was loaded. Check junctions afterwards on openstreetmap.org.
 
 ## 4. Offline base map from QGIS (aerial imagery without network)
 
@@ -104,7 +119,8 @@ Note: bulk pre-downloading of `tile.openstreetmap.org` tiles is not allowed by t
 
 ## 5. Using the data in QGIS
 
-*Layer → Add Layer → Add Vector Layer* → select the `.geojson`. QGIS asks which geometry types to load (points, lines, polygons).
+Unpack the ZIP, then *Layer → Add Layer → Add Vector Layer* → select the `.geojson`. QGIS asks which geometry types to load (points, lines, polygons).
+To show photos: *Layer Properties → Attributes Form* → field `_photo` → widget **Attachment**, path relative to the unpacked folder, display as image.
 All OSM tags and private fields are attributes. Columns starting with `_` are metadata:
 
 | column | meaning |
@@ -114,8 +130,9 @@ All OSM tags and private fields are attributes. Columns starting with `_` are me
 | `_created` | date/time collected (UTC) |
 | `_accuracy_m` | estimated GPS accuracy in metres |
 | `_samples` | number of GPS fixes averaged |
-| `_status` | `new` or `uploaded` |
+| `_status` | `new`, `uploaded`, `edited` or `edit_uploaded` (corrected existing OSM object) |
 | `_osm_id` | OSM id after upload (`n123…` node, `w123…` way) |
+| `_photo`, `_photos` | path of the first photo / all photos (`photos/<id>_<n>.jpg`, separated by `;`) |
 
 The GPX file contains points as waypoints and the **raw** GPS tracks of walked ways.
 
@@ -124,7 +141,13 @@ The GPX file contains points as waypoints and the **raw** GPS tracks of walked w
 ```
 index.html            app shell
 src/main.js           map, recording, list, upload, export & settings screens
-src/editor.js         tag editor & preset picker
+src/editor.js         tag editor & preset picker (favourites, photos, survey form)
+src/favourites.js     favourites & recently used tag sets
+src/photos.js         photo capture, scaling, storage, viewer
+src/snap.js           connecting new ways to existing ways
+src/template.js       project templates: QR code (create/scan), file import
+src/tutorial.js       first-start tutorial
+src/theme.js          light / dark theme
 src/presets.js        presets & fields (Map Features subset) – extend here
 src/gps.js            GPS (background-geolocation plugin / browser / simulation)
 src/osm.js            OAuth 2.0 PKCE, osmChange upload, existing data download
@@ -134,13 +157,15 @@ src/icons.js          SVG icons (Lucide, bundled for offline use) & category ico
 src/ui.js             sheets, dialogs, bottom-sheet menus, toasts
 src/db.js             IndexedDB storage
 src/config.js         client IDs, servers, base maps, defaults
+resources/icon.svg    app icon source – run `node scripts/make-icons.mjs` after changing it
 android/              Capacitor Android project (manifest: permissions, OAuth redirect)
 ```
 
 ## Known limitations / ideas
 
-* Only **new** objects are created; editing or deleting existing OSM objects is not supported (use iD/JOSM/Vespucci).
-* New ways are not joined to existing ways or to each other.
-* Photos are not supported yet (could be stored locally and exported; OSM itself does not store photos – Panoramax would be an option).
-* UI is English only; translations (e.g. German, Dagbani) could be added.
+* Existing OSM objects: only their **tags** can be corrected; moving, reshaping or deleting them is not supported (use iD/JOSM/Vespucci).
+* Connecting needs the existing OSM data of the area loaded beforehand; an edit made by someone else in the meantime leads to an upload conflict (load the data again and repeat).
+* Photos are not uploaded anywhere (OSM itself does not store photos – Panoramax would be an option).
+* UI is English only; translations (e.g. Dagbani, Twi, French, German) are planned.
+* Planned: optional larger text.
 * GPS accuracy of phones is typically 3–10 m; averaging helps for points. For precise surveys use an external GNSS receiver (Android *mock location*).

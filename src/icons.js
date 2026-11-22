@@ -7,6 +7,8 @@ import {
   House, Info, Landmark, Layers, List, LocateFixed, LogIn, LogOut, Mail, MapPin, MapPinned, Minus,
   Move, Pause, PenLine, Pentagon, Play, Plus, Route, Satellite, Search, Settings, Share2, Signpost,
   Spline, Store, Tags, Trash2, Trees, Trophy, Undo2, Waves, Wheat, X, Zap, Crosshair, Download,
+  Star, History, Camera, ImagePlus, ScanQrCode, QrCode, FileUp, Magnet, SquarePen, ClipboardList, ChevronLeft,
+  Sun, Moon, SunMoon, Lightbulb, FileArchive,
 } from 'lucide';
 
 const ICONS = {
@@ -19,7 +21,9 @@ const ICONS = {
   'map-pinned': MapPinned, 'minus': Minus, 'move': Move, 'pause': Pause, 'pen': PenLine,
   'area': Pentagon, 'play': Play, 'plus': Plus, 'way': Route, 'gps': Satellite, 'search': Search,
   'settings': Settings, 'share': Share2, 'line': Spline, 'tags': Tags, 'trash': Trash2, 'undo': Undo2,
-  'x': X, 'crosshair': Crosshair,
+  'x': X, 'crosshair': Crosshair, 'star': Star, 'history': History, 'camera': Camera, 'image-plus': ImagePlus,
+  'scan': ScanQrCode, 'qr': QrCode, 'file-up': FileUp, 'snap': Magnet, 'edit': SquarePen, 'form': ClipboardList,
+  'chevron-left': ChevronLeft, 'sun': Sun, 'moon': Moon, 'sun-moon': SunMoon, 'tip': Lightbulb, 'zip': FileArchive,
 };
 
 // Icon per preset category (used in the preset picker, list and map markers).

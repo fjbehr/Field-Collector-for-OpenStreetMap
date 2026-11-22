@@ -4,6 +4,6 @@
   "webDir": "dist",
   "android": {
     "useLegacyBridge": true,
-    "appendUserAgent": "OSMFieldCollector/0.1"
+    "appendUserAgent": "OSMFieldCollector/0.2"
   }
 }

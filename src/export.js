@@ -3,7 +3,8 @@
 //   GeoJSON – for QGIS (all OSM tags + private survey fields + metadata)
 //   GPX     – waypoints and raw GPS tracks
 //   .osm    – JOSM file of features not yet uploaded
-//   Backup  – complete internal data, can be restored in Settings
+//   Backup  – complete internal data (without photos), can be restored in Settings
+//   ZIP     – GeoJSON + GPX + photos/ folder, for QGIS
 
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -12,6 +13,8 @@ import { EmailComposer } from 'capacitor-email-composer';
 import { APP_NAME, APP_VERSION } from './config.js';
 import { buildElements, cleanTags, osmFileXml, xmlEsc } from './osm.js';
 import { featureLabel } from './presets.js';
+import { zipSync, strToU8 } from 'fflate';
+import { photoBlob, photoFileName } from './photos.js';
 
 const native = Capacitor.isNativePlatform();
 
@@ -45,9 +48,11 @@ export function toGeoJSON(features) {
           _created: new Date(f.created).toISOString(),
           _accuracy_m: f.accuracy != null ? Math.round(f.accuracy * 10) / 10 : null,
           _samples: f.samples ?? null,
-          _status: f.status,
+          _status: f.kind === 'edit' ? (f.status === 'uploaded' ? 'edit_uploaded' : 'edited') : f.status,
           _osm_id: f.osmId ? `${f.type === 'node' ? 'n' : 'w'}${f.osmId}` : null,
           _note: f.note || null,
+          _photo: f.photos?.length ? photoFileName(f, 0) : null,
+          _photos: f.photos?.length ? f.photos.map((p, i) => photoFileName(f, i)).join(';') : null,
         },
       })),
     },
@@ -90,7 +95,34 @@ export function toBackup(features, settings) {
   return JSON.stringify({ app: APP_NAME, version: APP_VERSION, exported: new Date().toISOString(), settings, features });
 }
 
+const ZIP_README = `Exported from ${APP_NAME}
+
+*.geojson  – open in QGIS: Layer > Add Layer > Add Vector Layer
+*.gpx      – waypoints and raw GPS tracks
+photos/    – photos of the features; the attribute "_photo" / "_photos"
+             holds the path relative to this folder.
+
+Tip (QGIS): Layer Properties > Attributes Form > field "_photo" >
+widget type "Attachment", path relative to this folder, show as image.
+`;
+
+async function toZip(features, settings, base) {
+  const files = {
+    [`${base}.geojson`]: strToU8(toGeoJSON(features)),
+    [`${base}.gpx`]: strToU8(toGPX(features)),
+    'README.txt': strToU8(ZIP_README),
+  };
+  for (const f of features) {
+    for (const [i, p] of (f.photos || []).entries()) {
+      const blob = await photoBlob(p.id);
+      if (blob) files[photoFileName(f, i)] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }];
+    }
+  }
+  return zipSync(files, { level: 6 });
+}
+
 export const FORMATS = {
+  zip: { label: 'ZIP for QGIS (GeoJSON + GPX + photos)', ext: 'zip', mime: 'application/zip', make: (f, s, base) => toZip(f, s, base) },
   geojson: { label: 'GeoJSON (QGIS)', ext: 'geojson', mime: 'application/geo+json', make: (f) => toGeoJSON(f) },
   gpx: { label: 'GPX (GPS tracks & waypoints)', ext: 'gpx', mime: 'application/gpx+xml', make: (f) => toGPX(f) },
   osm: { label: 'OSM XML (JOSM, not-uploaded only)', ext: 'osm', mime: 'application/xml', make: (f) => toOsmFile(f) },
@@ -101,22 +133,34 @@ export function safeName(s) {
   return (s || 'survey').replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'survey';
 }
 
-export function buildFiles(features, formats, settings, baseName) {
+export async function buildFiles(features, formats, settings, baseName) {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  return formats.map((k) => ({
-    name: `${baseName}_${stamp}${k === 'backup' ? '_backup' : ''}.${FORMATS[k].ext}`,
-    mime: FORMATS[k].mime,
-    data: FORMATS[k].make(features, settings),
-  }));
+  const base = `${baseName}_${stamp}`;
+  const out = [];
+  for (const k of formats) {
+    out.push({
+      name: `${base}${k === 'backup' ? '_backup' : ''}.${FORMATS[k].ext}`,
+      mime: FORMATS[k].mime,
+      data: await FORMATS[k].make(features, settings, base),
+    });
+  }
+  return out;
 }
+
+// Uint8Array → base64 (in chunks, large ZIP files)
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+const writeOpts = (file) => (typeof file.data === 'string' ? { data: file.data, encoding: Encoding.UTF8 } : { data: toBase64(file.data) });
 
 // ---------- delivery ----------
 async function writeCache(file) {
   const r = await Filesystem.writeFile({
     path: `export/${file.name}`,
-    data: file.data,
+    ...writeOpts(file),
     directory: Directory.Cache,
-    encoding: Encoding.UTF8,
     recursive: true,
   });
   return r.uri;
@@ -160,9 +204,8 @@ export async function saveToDocuments(files) {
   for (const f of files) {
     await Filesystem.writeFile({
       path: `OSMFieldCollector/${f.name}`,
-      data: f.data,
+      ...writeOpts(f),
       directory: Directory.Documents,
-      encoding: Encoding.UTF8,
       recursive: true,
     });
   }

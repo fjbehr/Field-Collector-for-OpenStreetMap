@@ -1,6 +1,6 @@
 {
   "name": "osm-field-collector",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Offline-first Android app to collect OpenStreetMap nodes and ways with GPS",
   "type": "module",
@@ -20,12 +20,16 @@
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/share": "^8.0.3",
     "capacitor-email-composer": "^8.0.0",
+    "fflate": "0.8.3",
+    "jsqr": "1.4.0",
     "leaflet": "^1.9.4",
     "lucide": "1.77.0",
-    "pmtiles": "^4.5.0"
+    "pmtiles": "^4.5.0",
+    "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",
+    "sharp": "0.35.5",
     "vite": "^8.3.8"
   }
 }
