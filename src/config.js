@@ -25,7 +25,7 @@ export const OSM_SERVERS = {
     label: 'OSM test server (master.apis.dev)',
     web: 'https://master.apis.dev.openstreetmap.org',
     api: 'https://master.apis.dev.openstreetmap.org',
-    clientId: '', // <-- client ID registered on the dev server
+    clientId: 'AWHkt4ww2W5hdoSy7p-fpQ8pqWBqpbzoaD4iiIgngkE', // public client ID (master.apis.dev.openstreetmap.org)
   },
 };
 
