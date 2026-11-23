@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import 'leaflet/dist/leaflet.css';
 import './styles.css';
 import L from 'leaflet';
@@ -21,6 +22,7 @@ import { getFavourites, setTemplateFavourites } from './favourites.js';
 import { deletePhotosOf } from './photos.js';
 import { encodeTemplate, decodeTemplate, validateTemplate, qrSvg, scanQr, FIELD_TYPES } from './template.js';
 import { showTutorial } from './tutorial.js';
+import { openAbout } from './about.js';
 import { parseCoordinates, searchOffline, searchOnline, rememberPlace, recentPlaces } from './search.js';
 import {
   $, $$, esc, toast, openSheet, closeSheet, hasOpenSheet, closeDialog,
@@ -873,7 +875,8 @@ async function openSettings() {
         <button class="btn small" data-existing-clear>Clear loaded OSM data</button>
         <p class="hint">Create backups regularly via Export → “Backup”. Uninstalling the app deletes all data on the phone.</p>
       </div>
-      <p class="muted">${APP_NAME} ${APP_VERSION} · Map data © OpenStreetMap contributors (ODbL)</p>`,
+      <p class="muted">${APP_NAME} ${APP_VERSION} · Map data © OpenStreetMap contributors (ODbL)</p>
+      <button class="btn small" data-about>${icon('info', 'sm')}About, licence & disclaimer</button>`,
     onClose: async () => {
       await saveSettings();
       await setBasemap();
@@ -928,7 +931,8 @@ async function openSettings() {
     }
   });
   sheet.addEventListener('click', async (e) => {
-    if (e.target.closest('[data-cleartiles]') && (await confirmDialog('Delete all cached map tiles?', 'Delete', 'Cancel', true))) {
+    if (e.target.closest('[data-about]')) return openAbout();
+    if (e.target.closest('[data-cleartiles]') &&(await confirmDialog('Delete all cached map tiles?', 'Delete', 'Cancel', true))) {
       await db.clear('tiles');
       closeSheet(sheet);
       toast('Tile cache cleared');
@@ -960,6 +964,7 @@ async function openMore() {
     { value: 'template', icon: 'qr', label: 'Project template', desc: state.templates[state.settings.project] ? 'survey form of this project is active' : 'scan the teacher’s QR code, or create one' },
     { value: 'settings', icon: 'settings', label: 'Settings' },
     { value: 'help', icon: 'help', label: 'Help & tutorial' },
+    { value: 'about', icon: 'info', label: 'About, licence & disclaimer', desc: `version ${APP_VERSION} · free software, no warranty` },
   ]);
   if (v === 'template') openTemplate();
   else if (v === 'export') openExport();
@@ -968,6 +973,7 @@ async function openMore() {
   else if (v === 'project') switchProject();
   else if (v === 'settings') openSettings();
   else if (v === 'help') openHelp();
+  else if (v === 'about') openAbout();
 }
 
 async function switchProject() {
@@ -1010,9 +1016,13 @@ function openHelp() {
       <h3>Uploading</h3>
       <p>Log in with your OSM account and upload. Try the <b>test server</b> first (Settings → Server). Check your uploaded data afterwards on openstreetmap.org.</p>
       <h3>QGIS</h3>
-      <p>Export the ZIP, unpack it and open the GeoJSON in QGIS. All tags become attributes; your private survey fields too. Attributes starting with “_” are metadata (accuracy, date, project, OSM id, photo path).</p>`,
+      <p>Export the ZIP, unpack it and open the GeoJSON in QGIS. All tags become attributes; your private survey fields too. Attributes starting with “_” are metadata (accuracy, date, project, OSM id, photo path).</p>
+      <h3>Licence & disclaimer</h3>
+      <p>The app is free software (GPL-3.0-or-later) and comes without any warranty. Please read the notes on GPS accuracy, backups, public uploads and personal data.</p>
+      <button class="btn block" data-about>${icon('info')}About, licence & disclaimer</button>`,
   });
   $('[data-tutorial]', sheet).addEventListener('click', () => showTutorial());
+  $('[data-about]', sheet).addEventListener('click', () => openAbout());
 }
 
 // ======================================================================

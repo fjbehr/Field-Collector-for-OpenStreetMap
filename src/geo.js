@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Geometry helpers (no dependencies).
 
 const R = 6371008.8; // mean earth radius in metres

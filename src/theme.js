@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Light / dark appearance. "auto" follows the phone's dark-mode setting.
 const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 let current = 'auto';

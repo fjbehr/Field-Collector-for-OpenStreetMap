@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Feature editor: preset (feature type), favourites, preset fields, survey
 // form of the project template, photos, raw OSM tags, private survey fields
 // (exported, never uploaded) and a private note.

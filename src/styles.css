@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Clean, high-contrast theme (readable in bright sunlight) with large touch targets. */
 :root {
   --bg: #ffffff;
@@ -515,3 +516,18 @@ details.cat[open] > summary .chev { transform: rotate(180deg); }
 .place-pin svg.i { width: 36px; height: 36px; fill: #fff; }
 @keyframes drop { from { transform: translateY(-24px); opacity: 0; } }
 .leaflet-tooltip.place-label { font-weight: 700; }
+
+/* ---- About & licences ---- */
+.about-head { display: flex; align-items: center; gap: 14px; margin: 4px 0 12px; }
+.about-head b { display: block; font-size: 1.1rem; }
+.about-head small { color: var(--muted); }
+.about-logo { width: 56px; height: 56px; border-radius: 14px; flex: none; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.about .legal { font-size: 0.85rem; line-height: 1.5; }
+.about h3 svg { vertical-align: -2px; margin-right: 6px; }
+.notes { padding-left: 18px; margin: 6px 0; }
+.notes li { margin: 0 0 8px; line-height: 1.45; font-size: 0.92rem; }
+.comp-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 10px; }
+.comp-table td { padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.comp-table td:last-child { color: var(--muted); white-space: nowrap; text-align: right; }
+.comp-table small { color: var(--muted); }
+.license-text { white-space: pre-wrap; word-break: break-word; font-size: 0.75rem; line-height: 1.4; margin: 0; }

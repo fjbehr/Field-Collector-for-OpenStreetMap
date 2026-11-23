@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Snapping: connect new way points to what is already there.
 //
 //   1. an existing OSM way vertex nearby  → the new way uses that OSM node

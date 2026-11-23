@@ -1,15 +1,17 @@
 {
   "name": "osm-field-collector",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
-  "description": "Offline-first Android app to collect OpenStreetMap nodes and ways with GPS",
+  "description": "Field Collector for OpenStreetMap – offline-first Android app to collect OpenStreetMap nodes and ways with GPS",
+  "license": "GPL-3.0-or-later",
+  "author": "Franz-Josef Behr and contributors",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/make-notices.mjs && vite build",
     "preview": "vite preview",
-    "sync": "vite build && cap sync android",
-    "apk": "vite build && cap sync android && cd android && .\\gradlew.bat assembleDebug"
+    "sync": "npm run build && cap sync android",
+    "apk": "npm run build && cap sync android && cd android && .\\gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.3.1",

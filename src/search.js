@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Place search.
 //
 //   online  – Nominatim (https://nominatim.openstreetmap.org), following its

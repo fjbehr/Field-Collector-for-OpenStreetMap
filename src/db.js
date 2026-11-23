@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Small promise wrapper around IndexedDB. All collected data lives here, on
 // the phone, so the app works completely offline.
 //

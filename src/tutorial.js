@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Short illustrated tutorial: shown on first start and from Menu → Tutorial.
 import { icon } from './icons.js';
 
@@ -35,7 +36,7 @@ const SLIDES = [
   {
     icon: 'upload',
     title: 'Upload & export',
-    text: 'Back with network: <span class="kbd">${upload} Upload</span> sends your data to OpenStreetMap (log in once). <b>More → Export</b> gives a ZIP for QGIS or sends it by e-mail.',
+    text: 'Back with network: <span class="kbd">${upload} Upload</span> sends your data to OpenStreetMap (log in once). <b>More → Export</b> gives a ZIP for QGIS or sends it by e-mail.<br><small>The app is free software and comes without any warranty – please read <b>More → About</b> (GPS accuracy, backups, public uploads).</small>',
   },
 ];
 

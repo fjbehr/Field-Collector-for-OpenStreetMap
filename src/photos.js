@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Photos per feature. Photos are taken with the phone camera (or picked from
 // the gallery), scaled down to save space, and stored on the phone (IndexedDB
 // "files" store, key "photo:<id>"). They are exported with the data (ZIP for

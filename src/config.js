@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Central configuration.
 //
 // OAuth2 client IDs: register the app once per OSM server (see README.md,
@@ -5,8 +6,14 @@
 // be compiled into the app; students then only need their own OSM account.
 // The values can also be overridden at runtime in Settings.
 
-export const APP_NAME = 'OSM Field Collector';
-export const APP_VERSION = '0.2.0';
+export const APP_NAME = 'Field Collector for OpenStreetMap';
+export const APP_SHORT_NAME = 'Field Collector'; // home-screen label
+export const APP_VERSION = '0.2.1';
+export const COPYRIGHT = 'Copyright (C) 2026 Franz-Josef Behr and contributors';
+export const LICENSE_NAME = 'GNU General Public License, version 3 or later (GPL-3.0-or-later)';
+// Public repository with the source code (GPL: whoever receives the APK must be
+// able to get the source). Leave empty until the repository is published.
+export const SOURCE_URL = '';
 
 // Custom URL scheme that Android routes back to the app after OSM login.
 // Must match the intent filter in android/app/src/main/AndroidManifest.xml

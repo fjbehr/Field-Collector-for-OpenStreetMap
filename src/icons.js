@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // SVG icons (Lucide, ISC licence – https://lucide.dev). Only the icons
 // imported here end up in the app bundle; they work fully offline.
 import {

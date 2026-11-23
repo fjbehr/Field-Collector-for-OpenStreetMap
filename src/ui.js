@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Tiny UI toolkit: sheets (full-screen panels), dialogs and toasts.
 import { icon } from './icons.js';
 

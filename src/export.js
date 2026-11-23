@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Export formats and delivery (email, share sheet, save to Documents).
 //
 //   GeoJSON – for QGIS (all OSM tags + private survey fields + metadata)

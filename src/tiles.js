@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Leaflet tile layers that work offline.
 //
 // CachedTileLayer: every tile that is displayed is stored in IndexedDB and is

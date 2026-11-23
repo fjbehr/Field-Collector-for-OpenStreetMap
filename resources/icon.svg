@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
-  <!-- OSM Field Collector app icon. 108x108 = Android adaptive icon canvas,
+  <!-- Field Collector for OpenStreetMap app icon. 108x108 = Android adaptive icon canvas,
        the visible "safe zone" is the circle r=33 around the centre. -->
   <rect width="108" height="108" fill="#13293d"/>
   <g id="foreground">

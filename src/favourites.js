@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Favourites (saved attribute sets) and recently used tag sets.
 //
 // A favourite is a complete set of OSM tags (and optionally private survey

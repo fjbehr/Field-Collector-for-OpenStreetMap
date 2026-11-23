@@ -1,4 +1,4 @@
-# OSM Field Collector
+# Field Collector for OpenStreetMap
 
 An offline-first Android app for collecting OpenStreetMap **nodes and ways with the phone's GPS**, tagging them with presets based on
 [Map Features](https://wiki.openstreetmap.org/wiki/Map_features), and later
@@ -40,7 +40,7 @@ Uploading needs an OAuth 2.0 *client ID*. You register the app **once**; student
 
 1. Log in at <https://www.openstreetmap.org> → *My Account* → *OAuth 2 applications* → *Register new application*
    (direct link: <https://www.openstreetmap.org/oauth2/applications/new>).
-2. Name: `OSM Field Collector` (or your own name)
+2. Name: `Field Collector for OpenStreetMap` (or your own name)
    Redirect URI: `osmfieldcollector://oauth`
    **Uncheck** *Confidential application* (a mobile app cannot keep a secret).
    Permissions: **Read user preferences** and **Modify the map**.
@@ -158,7 +158,10 @@ src/tiles.js          cached tile layer, offline .pmtiles layer
 src/icons.js          SVG icons (Lucide, bundled for offline use) & category icons
 src/ui.js             sheets, dialogs, bottom-sheet menus, toasts
 src/db.js             IndexedDB storage
-src/config.js         client IDs, servers, base maps, defaults
+src/config.js         client IDs, servers, base maps, defaults, copyright, source URL
+src/about.js          About screen: licence notice, disclaimer, privacy, attributions
+scripts/make-notices.mjs  collects the licences of bundled libraries into public/licenses/ (runs with `npm run build`)
+LICENSE               GNU GPL version 3
 resources/icon.svg    app icon source – run `node scripts/make-icons.mjs` after changing it
 android/              Capacitor Android project (manifest: permissions, OAuth redirect)
 ```
@@ -171,3 +174,34 @@ android/              Capacitor Android project (manifest: permissions, OAuth re
 * UI is English only; translations (e.g. Dagbani, Twi, French, German) are planned.
 * Planned: optional larger text.
 * GPS accuracy of phones is typically 3–10 m; averaging helps for points. For precise surveys use an external GNSS receiver (Android *mock location*).
+
+## Licence & disclaimer
+
+Copyright (C) 2026 Franz-Josef Behr and contributors
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but **WITHOUT ANY WARRANTY**; without even the implied
+warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The full text is in [LICENSE](LICENSE) and in the app (*More → About*).
+
+**Please note** (also shown in the app):
+
+* Use at your own risk – the app is free and provided “as is”, without any guarantee that it works correctly.
+* GPS positions can be several metres off; do not use the app for navigation or safety-related purposes.
+* Data is stored only on the phone; uninstalling or losing the phone deletes it – export and back up regularly.
+* Everything uploaded to OpenStreetMap is public and permanent and shows your OSM user name; never upload personal data.
+* Private survey answers and photos are the responsibility of whoever collects them (consent, data protection –
+  in Ghana the Data Protection Act, 2012, Act 843).
+
+**Privacy:** no advertising, analytics or tracking. The app only contacts openstreetmap.org (login, upload, loading data),
+the chosen tile servers (OpenStreetMap, Esri), Nominatim (place search) and taginfo (tag suggestions).
+
+**Distributing the APK:** the GPL requires that whoever receives the app can also get its source code. Publish the
+repository (e.g. on GitHub or Codeberg) and set `SOURCE_URL` in `src/config.js` so the About screen links to it.
+
+**Third-party software:** Leaflet (BSD-2-Clause), Lucide (ISC), fflate (MIT), jsQR (Apache-2.0), qrcode-generator (MIT),
+PMTiles (BSD-3-Clause), Capacitor and plugins (MIT), AndroidX and Cordova Android (Apache-2.0) – full texts in
+`public/licenses/THIRD-PARTY-NOTICES.txt`. Map data © OpenStreetMap contributors (ODbL). “OpenStreetMap” is a trademark of
+the OpenStreetMap Foundation; this project is not made or endorsed by the Foundation.

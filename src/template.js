@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Project templates ("survey forms") shared by a teacher via QR code or file.
 //
 // A template contains: project name, changeset hashtags/comment, survey form

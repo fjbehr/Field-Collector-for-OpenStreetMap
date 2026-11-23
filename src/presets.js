@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Tag presets, based on https://wiki.openstreetmap.org/wiki/Map_features.
 //
 // This is a curated subset focused on field surveys (including features that

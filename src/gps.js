@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // GPS access.
 //
 // On Android the @capacitor-community/background-geolocation plugin is used.

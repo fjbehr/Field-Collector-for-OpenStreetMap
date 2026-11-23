@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Generates the Android launcher icons and splash screens from resources/icon.svg.
 // Run: node scripts/make-icons.mjs   (needs the dev dependency "sharp")
 import sharp from 'sharp';

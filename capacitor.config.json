@@ -1,6 +1,6 @@
 {
   "appId": "app.osmfield.collector",
-  "appName": "OSM Field Collector",
+  "appName": "Field Collector",
   "webDir": "dist",
   "android": {
     "useLegacyBridge": true,

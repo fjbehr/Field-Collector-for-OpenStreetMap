@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">OSM Field Collector</string>
-    <string name="title_activity_main">OSM Field Collector</string>
+    <string name="app_name">Field Collector</string>
+    <string name="title_activity_main">Field Collector</string>
     <string name="package_name">app.osmfield.collector</string>
     <string name="custom_url_scheme">app.osmfield.collector</string>
     <string name="capacitor_background_geolocation_notification_channel_name">Way recording</string>

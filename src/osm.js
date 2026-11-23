@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // OpenStreetMap login (OAuth 2.0 with PKCE) and API 0.6 upload.
 //
 // Flow: the system browser opens the OSM login page; after the user grants
