@@ -12,8 +12,8 @@ export const APP_VERSION = '0.2.1';
 export const COPYRIGHT = 'Copyright (C) 2026 Franz-Josef Behr and contributors';
 export const LICENSE_NAME = 'GNU General Public License, version 3 or later (GPL-3.0-or-later)';
 // Public repository with the source code (GPL: whoever receives the APK must be
-// able to get the source). Leave empty until the repository is published.
-export const SOURCE_URL = '';
+// able to get the source).
+export const SOURCE_URL = 'https://github.com/fjbehr/Field-Collector-for-OpenStreetMap';
 
 // Custom URL scheme that Android routes back to the app after OSM login.
 // Must match the intent filter in android/app/src/main/AndroidManifest.xml

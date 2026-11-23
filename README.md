@@ -9,6 +9,8 @@ An offline-first Android app for collecting OpenStreetMap **nodes and ways with 
 Built for field work in places with little or no mobile network (e.g. student projects of the University for Development Studies in
 rural communities of Northern Ghana): everything is stored on the phone, network is only needed for login/upload and e-mail.
 
+Source code: https://github.com/fjbehr/Field-Collector-for-OpenStreetMap (GPL-3.0-or-later)
+
 Technology: HTML/CSS/**JavaScript** (no framework) + [Capacitor 8](https://capacitorjs.com) as the Android shell, [Leaflet](https://leafletjs.com) for the map.
 
 ---
@@ -198,8 +200,8 @@ The full text is in [LICENSE](LICENSE) and in the app (*More → About*).
 **Privacy:** no advertising, analytics or tracking. The app only contacts openstreetmap.org (login, upload, loading data),
 the chosen tile servers (OpenStreetMap, Esri), Nominatim (place search) and taginfo (tag suggestions).
 
-**Distributing the APK:** the GPL requires that whoever receives the app can also get its source code. Publish the
-repository (e.g. on GitHub or Codeberg) and set `SOURCE_URL` in `src/config.js` so the About screen links to it.
+**Source code:** https://github.com/fjbehr/Field-Collector-for-OpenStreetMap – the GPL requires that whoever receives
+the APK can also get the source code; the About screen links to this repository (`SOURCE_URL` in `src/config.js`).
 
 **Third-party software:** Leaflet (BSD-2-Clause), Lucide (ISC), fflate (MIT), jsQR (Apache-2.0), qrcode-generator (MIT),
 PMTiles (BSD-3-Clause), Capacitor and plugins (MIT), AndroidX and Cordova Android (Apache-2.0) – full texts in
